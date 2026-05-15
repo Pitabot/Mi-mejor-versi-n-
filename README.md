@@ -1,2 +1,2 @@
-# Mi-mejor-versi-n-
+# Mi-mejor-version
 App diseñada para simplificar los cálculos alimenticios
