@@ -8,9 +8,14 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { margin: 0; background: #080810; color: #eee8e0; font-family: -apple-system, system-ui, sans-serif; overflow-x: hidden; }
-        input, select, textarea { background: #080810; border: 1px solid #2a2a40; border-radius: 8px; padding: 7px 10px; color: #eee8e0; font-family: inherit; fontSize: 14px; width: 100%; box-sizing: border-box; }
-        .card { background: #0f0f1e; border: 1px solid #1e1e35; border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+        body { margin: 0; background: #080810; color: #eee8e0; font-family: -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        .card { background: #0f0f1e; border: 1px solid #1e1e35; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+        input, select, textarea { background: #080810; border: 1px solid #2a2a40; border-radius: 10px; padding: 12px; color: #eee8e0; font-size: 14px; width: 100%; box-sizing: border-box; outline: none; }
+        input:focus { border-color: #e8b86d; }
+        .btn-gold { background: linear-gradient(135deg, #e8b86d, #c8784a); color: #080810; border: none; border-radius: 12px; font-weight: 800; padding: 14px; cursor: pointer; transition: transform 0.1s; }
+        .btn-gold:active { transform: scale(0.98); }
+        .tab-btn { flex: 1; padding: 16px; background: none; border: none; font-weight: bold; color: #557; cursor: pointer; border-bottom: 2px solid transparent; transition: 0.3s; }
+        .tab-active { color: #e8b86d; border-bottom-color: #e8b86d; background: rgba(232, 184, 109, 0.05); }
     </style>
 </head>
 <body>
@@ -18,276 +23,226 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- LÓGICA DE TU ARCHIVO JSX ---
         const SK = "macro_tracker_v2";
         const today = () => new Date().toISOString().split("T")[0];
         const load = () => { try { return JSON.parse(localStorage.getItem(SK)) || {}; } catch { return {}; } };
         const persist = d => localStorage.setItem(SK, JSON.stringify(d));
 
         const DIET_MODES = [
-          { id: "deficit",       label: "Déficit",        desc: "Perder grasa",    emoji: "🔥", pct: -20 },
-          { id: "mantenimiento", label: "Mantenimiento",   desc: "Peso estable",    emoji: "⚖️", pct: 0   },
-          { id: "superavit",     label: "Superávit",       desc: "Ganar músculo",   emoji: "💪", pct: +15 },
+          { id: "deficit", label: "Déficit", emoji: "🔥", pct: -20 },
+          { id: "mantenimiento", label: "Mantenimiento", emoji: "⚖️", pct: 0 },
+          { id: "superavit", label: "Superávit", emoji: "💪", pct: 15 }
         ];
 
         const MACRO_PRESETS = {
-          deficit:       { p: 2.4, c: 2.0, f: 0.8 },
+          deficit: { p: 2.4, c: 2.0, f: 0.8 },
           mantenimiento: { p: 2.0, c: 3.0, f: 1.0 },
-          superavit:     { p: 2.2, c: 4.5, f: 1.2 },
+          superavit: { p: 2.2, c: 4.5, f: 1.2 }
         };
 
-        function calcTDEE(weight, height, age, sex, activity) {
-          const bmr = sex === "m" ? 10 * weight + 6.25 * height - 5 * age + 5 : 10 * weight + 6.25 * height - 5 * age - 161;
-          const f = { sedentario: 1.2, ligero: 1.375, moderado: 1.55, activo: 1.725, muyActivo: 1.9 };
-          return Math.round(bmr * (f[activity] || 1.55));
+        function calcTDEE(w, h, a, s, act) {
+          const bmr = s === "m" ? 10 * w + 6.25 * h - 5 * a + 5 : 10 * w + 6.25 * h - 5 * a - 161;
+          const factors = { sedentario: 1.2, ligero: 1.375, moderado: 1.55, activo: 1.725, muyActivo: 1.9 };
+          return Math.round(bmr * (factors[act] || 1.55));
         }
 
-        const ACTIVITY_LABELS = {
-          sedentario: "Sedentario (sin ejercicio)",
-          ligero:     "Ligero (1-2 días/sem)",
-          moderado:   "Moderado (3-4 días/sem)",
-          activo:     "Activo (5+ días/sem)",
-          muyActivo:  "Muy activo (2x/día)",
-        };
-
-        const FOOD_DB = [
-          { name: "Huevos revueltos (2)",  p: 12, c: 2,  f: 10, cal: 180 },
-          { name: "Avena con leche",       p: 8,  c: 40, f: 5,  cal: 250 },
-          { name: "Pechuga de pollo 150g", p: 35, c: 0,  f: 4,  cal: 165 },
-          { name: "Arroz blanco 1 taza",   p: 4,  c: 45, f: 1,  cal: 200 },
-          { name: "Atún en agua 1 lata",   p: 28, c: 0,  f: 1,  cal: 120 },
-        ];
-
-        // --- COMPONENTES DE INTERFAZ ---
-        function Section({ title, children }) {
+        const MiniRing = ({ pct, color, label, value }) => {
+          const r = 30; const c = 2 * Math.PI * r;
+          const offset = c - (c * Math.min(pct, 100) / 100);
           return (
-            <div style={{ background: "#0f0f1e", border: "1px solid #1e1e35", borderRadius: 14, padding: 14, marginBottom: 14 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 12, color: "#888", textTransform: "uppercase", letterSpacing: 1 }}>{title}</p>
-              {children}
-            </div>
-          );
-        }
-
-        function Row({ label, children }) {
-          return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-              <span style={{ fontSize: 13, color: "#aaa8c0", flex: 1 }}>{label}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>{children}</div>
-            </div>
-          );
-        }
-
-        function MiniRing({ pct, color, label, value, size = 80 }) {
-          const r = size / 2 - 9;
-          const circ = 2 * Math.PI * r;
-          const dash = circ * Math.min(1, pct / 100);
-          return (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <svg width={size} height={size}>
-                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e1e2e" strokeWidth={8} />
-                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={pct > 100 ? "#ef4444" : color}
-                  strokeWidth={8} strokeDasharray={circ} strokeDashoffset={circ - dash}
-                  strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`} />
-                <text x={size/2} y={size/2+4} textAnchor="middle" fill="#f0ede8" fontSize={12} fontWeight="bold">{Math.round(pct)}%</text>
+            <div style={{ textAlign: 'center' }}>
+              <svg width="75" height="75">
+                <circle cx="37.5" cy="37.5" r={r} fill="none" stroke="#1e1e2e" strokeWidth="7" />
+                <circle cx="37.5" cy="37.5" r={r} fill="none" stroke={color} strokeWidth="7" strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" transform="rotate(-90 37.5 37.5)" style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+                <text x="37.5" y="42" textAnchor="middle" fill="#fff" fontSize="12" fontWeight="800">{Math.round(pct)}%</text>
               </svg>
-              <span style={{ fontSize: 11, color: "#666", textTransform: "uppercase" }}>{label}</span>
-              <span style={{ fontSize: 14, color, fontWeight: 700 }}>{value.toFixed(0)}g</span>
+              <div style={{ fontSize: 10, color: '#668', marginTop: 4, fontWeight: 'bold' }}>{label}</div>
+              <div style={{ fontSize: 14, color, fontWeight: '800' }}>{Math.round(value)}g</div>
             </div>
           );
-        }
+        };
 
-        function MacroBar({ label, consumed, goal, color }) {
-          const pct = goal > 0 ? Math.min(100, (consumed / goal) * 100) : 0;
-          const over = consumed > goal;
-          return (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: "#aaa", fontWeight: 600 }}>{label}</span>
-                <span style={{ fontSize: 12, color: over ? "#ef4444" : color, fontWeight: 700 }}>
-                  {consumed.toFixed(1)}g <span style={{ color: "#555", fontWeight: 400 }}>/ {goal}g</span>
-                </span>
-              </div>
-              <div style={{ height: 8, background: "#1e1e2e", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct}%`, background: over ? "#ef4444" : color, borderRadius: 4 }} />
-              </div>
-            </div>
-          );
-        }
-
-        // --- APP PRINCIPAL ---
         function App() {
           const [tab, setTab] = useState("day");
           const [store, setStore] = useState(() => load());
           const [aiText, setAiText] = useState("");
           const [aiLoading, setAiLoading] = useState(false);
-          const [showPicker, setShowPicker] = useState(false);
-          const [custom, setCustom] = useState({ name: "", cal: "", p: "", c: "", f: "" });
+          
+          // Formulario completo (Nombre, Calorías, P, C, G)
+          const [newItem, setNewItem] = useState({ name: "", cal: "", p: "", c: "", f: "" });
 
           // ************************************************************
-          // CONFIGURACIÓN DE TU LLAVE DE GEMINI
+          // LÍNEA 118: PEGA TU CLAVE DE API DE GEMINI AQUÍ
           // ************************************************************
-          const API_KEY = ""; // <--- PEGA TU API KEY AQUÍ ENTRE LAS COMILLAS
+          const API_KEY = ""; 
           // ************************************************************
 
-          const profile     = store.profile     || { weight: 81.5, height: 180, age: 41, sex: "m", activity: "moderado" };
-          const diet        = store.diet        || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
-          const meals       = store[today()]    || [];
+          const p = store.profile || { weight: 81.5, height: 180, age: 41, sex: "m", activity: "moderado" };
+          const d = store.diet || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
+          const meals = store[today()] || [];
           const ingredients = store.ingredients || "";
 
-          const save = patch => { const next = { ...store, ...patch }; setStore(next); persist(next); };
-          const addMeal = m => save({ [today()]: [...meals, { ...m, time: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) }] });
-          const removeMeal = i => save({ [today()]: meals.filter((_, j) => j !== i) });
+          const save = (patch) => { const next = { ...store, ...patch }; setStore(next); persist(next); };
 
-          const tdee    = calcTDEE(profile.weight, profile.height, profile.age, profile.sex, profile.activity);
-          const modeObj = DIET_MODES.find(d => d.id === diet.mode) || DIET_MODES[1];
-          const goalCal = Math.round(tdee * (1 + (diet.useCustomPct ? Number(diet.customPct) : modeObj.pct) / 100));
+          // Cálculos de TDEE y Metas
+          const tdee = calcTDEE(Number(p.weight), Number(p.height), Number(p.age), p.sex, p.activity);
+          const modeObj = DIET_MODES.find(m => m.id === d.mode) || DIET_MODES[1];
+          const goalCal = Math.round(tdee * (1 + (d.useCustomPct ? Number(d.customPct) : modeObj.pct) / 100));
+          
+          const mB = d.useCustomMacros ? { p: d.customP, c: d.customC, f: d.customF } : MACRO_PRESETS[d.mode];
+          const gP = Math.round(mB.p * p.weight);
+          const gC = Math.round(mB.c * p.weight);
+          const gF = Math.round(mB.f * p.weight);
 
-          const macroBase = diet.useCustomMacros ? { p: Number(diet.customP), c: Number(diet.customC), f: Number(diet.customF) } : MACRO_PRESETS[diet.mode];
-          const goalP = Math.round(macroBase.p * profile.weight);
-          const goalC = Math.round(macroBase.c * profile.weight);
-          const goalF = Math.round(macroBase.f * profile.weight);
+          // Suma de consumo actual
+          const consumed = meals.reduce((acc, m) => ({
+            cal: acc.cal + Number(m.cal || 0), 
+            p: acc.p + Number(m.p || 0), 
+            c: acc.c + Number(m.c || 0), 
+            f: acc.f + Number(m.f || 0)
+          }), { cal: 0, p: 0, c: 0, f: 0 });
 
-          const consumed = meals.reduce((acc, m) => ({ cal: acc.cal + m.cal, p: acc.p + m.p, c: acc.c + m.c, f: acc.f + m.f }), { cal: 0, p: 0, c: 0, f: 0 });
-          const rem = { cal: Math.max(0, goalCal - consumed.cal), p: Math.max(0, goalP - consumed.p), c: Math.max(0, goalC - consumed.c), f: Math.max(0, goalF - consumed.f) };
-          const perKg = { p: consumed.p / profile.weight, c: consumed.c / profile.weight, f: consumed.f / profile.weight };
+          const rem = { cal: goalCal - consumed.cal, p: gP - consumed.p, c: gC - consumed.c, f: gF - consumed.f };
+          const perKg = { p: consumed.p / p.weight, c: consumed.c / p.weight, f: consumed.f / p.weight };
 
-          async function getSuggestion() {
+          async function getAi() {
+            if (!API_KEY) { alert("Falta API Key en la línea 118"); return; }
             setAiLoading(true); setAiText("");
-            const prompt = `Eres un nutriólogo experto hablando con la esposa de un usuario. Sugiere 3 cenas para: ${rem.cal}kcal restantes (P:${rem.p}g, C:${rem.c}g, G:${rem.f}g). Ingredientes: ${ingredients || "comunes"}. Formato: NOMBRE, INGREDIENTES, MACROS, TIEMPO. Tono cariñoso.`;
+            const prompt = `Eres un nutriólogo experto. Sugiere 3 opciones de cena para alguien que necesita: ${rem.cal}kcal, ${rem.p}g Proteína, ${rem.c}g Carbos y ${rem.f}g Grasa. Ingredientes: ${ingredients}. Sé amable y usa un lenguaje claro para mi esposa.`;
             try {
               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
+                method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
               });
-              const json = await res.json();
-              setAiText(json.candidates[0].content.parts[0].text);
-            } catch { setAiText("Error. Revisa tu API Key."); }
+              const data = await res.json();
+              setAiText(data.candidates[0].content.parts[0].text);
+            } catch (e) { setAiText("Error de conexión. Revisa tu clave."); }
             setAiLoading(false);
           }
 
           return (
-            <div style={{ maxWidth: 500, margin: "0 auto", paddingBottom: 80 }}>
-              <div style={{ background: "linear-gradient(160deg,#0d0d1a,#131325)", padding: 20, borderBottom: "1px solid #1e1e30" }}>
-                <h1 style={{ margin: 0, fontSize: 20 }}>🥗 Balance & Macros</h1>
-              </div>
+            <div style={{ maxWidth: 500, margin: "0 auto", paddingBottom: 100 }}>
+              <nav style={{ display: 'flex', background: '#0d0d1a', sticky: 'top', zIndex: 10 }}>
+                <button onClick={() => setTab("day")} className={`tab-btn ${tab === 'day' ? 'tab-active' : ''}`}>📊 Día</button>
+                <button onClick={() => setTab("config")} className={`tab-btn ${tab === 'config' ? 'tab-active' : ''}`}>⚙️ Perfil</button>
+                <button onClick={() => setTab("wife")} className={`tab-btn ${tab === 'wife' ? 'tab-active' : ''}`}>💌 Esposa</button>
+              </nav>
 
-              <div style={{ display: "flex", background: "#0d0d1a", borderBottom: "1px solid #1e1e30" }}>
-                {[{id:"day",e:"📊",l:"Mi día"},{id:"config",e:"⚙️",l:"Perfil"},{id:"wife",e:"💌",l:"Esposa"}].map(t => (
-                  <button key={t.id} onClick={()=>setTab(t.id)} style={{ flex: 1, padding: 15, background: "none", border: "none", color: tab === t.id ? "#e8b86d" : "#557", borderBottom: tab === t.id ? "2px solid #e8b86d" : "none", fontWeight: tab === t.id ? "bold" : "normal", cursor: "pointer" }}>{t.e} {t.l}</button>
-                ))}
-              </div>
-
-              <div style={{ padding: 14 }}>
+              <div style={{ padding: 16 }}>
                 {tab === "day" && (
                   <div>
+                    <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div><div style={{ fontSize: 11, color: '#668', letterSpacing: 1 }}>CONSUMO</div><div style={{ fontSize: 40, fontWeight: 900, color: '#e8b86d' }}>{consumed.cal}</div></div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: '#668' }}>META</div><div style={{ fontSize: 22, fontWeight: 700, color: '#7ca8f0' }}>{goalCal}</div><div style={{ fontSize: 12, color: rem.cal < 0 ? '#e87d7d' : '#557', marginTop: 4 }}>{rem.cal < 0 ? 'Exceso' : 'Faltan'} {Math.abs(rem.cal)} kcal</div></div>
+                    </div>
+
+                    <div className="card" style={{ display: 'flex', justifyContent: 'space-around', padding: '24px 10px' }}>
+                      <MiniRing pct={(consumed.p/gP)*100} color="#7ca8f0" label="PROT" value={consumed.p} />
+                      <MiniRing pct={(consumed.c/gC)*100} color="#e8b86d" label="CARB" value={consumed.c} />
+                      <MiniRing pct={(consumed.f/gF)*100} color="#e87d7d" label="GRAS" value={consumed.f} />
+                    </div>
+
                     <div className="card">
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <div><p style={{ color: "#668", fontSize: 11 }}>CONSUMIDAS</p><p style={{ fontSize: 38, fontWeight: 700, color: "#e8b86d", margin: 0 }}>{consumed.cal}</p></div>
-                        <div style={{ textAlign: "right" }}><p style={{ color: "#668", fontSize: 11 }}>META</p><p style={{ fontSize: 22, fontWeight: 700, color: "#7ca8f0", margin: 0 }}>{goalCal}</p></div>
+                      <p style={{ margin: '0 0 14px', fontSize: 12, color: '#888', fontWeight: 'bold' }}>REGISTRAR ALIMENTO</p>
+                      <input placeholder="Nombre (ej: Pollo a la plancha)" value={newItem.name} onChange={e=>setNewItem({...newItem, name:e.target.value})} style={{ marginBottom: 12 }} />
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) 54px', gap: 8 }}>
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#668'}}>kcal</span><input type="number" value={newItem.cal} onChange={e=>setNewItem({...newItem, cal:e.target.value})} /></div>
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#7ca8f0'}}>P(g)</span><input type="number" value={newItem.p} onChange={e=>setNewItem({...newItem, p:e.target.value})} /></div>
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#e8b86d'}}>C(g)</span><input type="number" value={newItem.c} onChange={e=>setNewItem({...newItem, c:e.target.value})} /></div>
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#e87d7d'}}>G(g)</span><input type="number" value={newItem.f} onChange={e=>setNewItem({...newItem, f:e.target.value})} /></div>
+                        <button className="btn-gold" style={{marginTop: 15, padding: 0, height: 42}} onClick={()=>{
+                          if(!newItem.name || !newItem.cal) return;
+                          save({[today()]: [...meals, {...newItem, cal:Number(newItem.cal), p:Number(newItem.p||0), c:Number(newItem.c||0), f:Number(newItem.f||0)}]});
+                          setNewItem({name:"", cal:"", p:"", c:"", f:""});
+                        }}>+</button>
                       </div>
                     </div>
 
-                    <Section title="Macros del día">
-                      <div style={{ display: "flex", justifyContent: "space-around" }}>
-                        <MiniRing pct={(consumed.p/goalP)*100} color="#7ca8f0" label="Proteína" value={consumed.p} />
-                        <MiniRing pct={(consumed.c/goalC)*100} color="#e8b86d" label="Carbos" value={consumed.c} />
-                        <MiniRing pct={(consumed.f/goalF)*100} color="#e87d7d" label="Grasas" value={consumed.f} />
-                      </div>
-                      <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-                        {[{l:"P g/kg",v:perKg.p,g:macroBase.p,c:"#7ca8f0"},{l:"C g/kg",v:perKg.c,g:macroBase.c,c:"#e8b86d"},{l:"G g/kg",v:perKg.f,g:macroBase.f,c:"#e87d7d"}].map(m => (
-                          <div key={m.l} style={{ flex: 1, background: "#13131f", borderRadius: 8, padding: 8, textAlign: "center" }}>
-                            <p style={{ margin: 0, fontSize: 10, color: "#557" }}>{m.l}</p>
-                            <p style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 700, color: m.c }}>{m.v.toFixed(2)}</p>
+                    {meals.length > 0 && (
+                      <div className="card">
+                        <p style={{ margin: '0 0 10px', fontSize: 12, color: '#888' }}>HISTORIAL</p>
+                        {meals.map((m, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #1a1a28' }}>
+                            <div><div style={{fontSize:14, fontWeight:600}}>{m.name}</div><div style={{fontSize:11, color:'#557'}}>P:{m.p}g | C:{m.c}g | G:{m.f}g</div></div>
+                            <div style={{display:'flex', alignItems:'center', gap:14}}>
+                              <span style={{color:'#e8b86d', fontWeight:'800'}}>{m.cal}</span>
+                              <button onClick={() => save({[today()]: meals.filter((_, idx) => idx !== i)})} style={{ background: 'none', border: 'none', color: '#433', fontSize: 18, cursor: 'pointer' }}>✕</button>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    </Section>
-
-                    <Section title="+ Agregar alimento">
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        <input placeholder="Nombre" value={custom.name} onChange={e=>setCustom({...custom, name:e.target.value})} style={{ flex: "2 1 130px" }} />
-                        <input type="number" placeholder="kcal" value={custom.cal} onChange={e=>setCustom({...custom, cal:e.target.value})} style={{ flex: "1 1 60px" }} />
-                        <button onClick={()=>{ if(custom.name) addMeal({name:custom.name, cal:+custom.cal, p:0, c:0, f:0}); setCustom({name:"",cal:"",p:"",c:"",f:""}); }} style={{ background: "#e8b86d", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: "bold", cursor: "pointer" }}>+</button>
-                      </div>
-                    </Section>
-
-                    <div className="card">
-                      <p style={{ margin: "0 0 10px", fontSize: 12, color: "#888" }}>REGISTRO</p>
-                      {meals.map((m, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1a1a28" }}>
-                          <div><p style={{ margin: 0, fontSize: 14 }}>{m.name}</p><p style={{ margin: 0, fontSize: 11, color: "#557" }}>{m.time}</p></div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ color: "#e8b86d", fontWeight: "bold" }}>{m.cal} kcal</span>
-                            <button onClick={()=>removeMeal(i)} style={{ background: "none", border: "none", color: "#433", cursor: "pointer" }}>✕</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    )}
                   </div>
                 )}
 
                 {tab === "config" && (
                   <div>
-                    <Section title="🧍 Datos personales">
-                      <Row label="Peso (kg)"><input type="number" value={profile.weight} onChange={e=>save({profile:{...profile, weight:+e.target.value}})} style={{width:80}}/></Row>
-                      <Row label="Altura (cm)"><input type="number" value={profile.height} onChange={e=>save({profile:{...profile, height:+e.target.value}})} style={{width:80}}/></Row>
-                      <Row label="Edad"><input type="number" value={profile.age} onChange={e=>save({profile:{...profile, age:+e.target.value}})} style={{width:80}}/></Row>
-                      <Row label="Actividad">
-                        <select value={profile.activity} onChange={e=>save({profile:{...profile, activity:e.target.value}})} style={{maxWidth:200}}>
-                          {Object.entries(ACTIVITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                        </select>
-                      </Row>
-                    </Section>
-
-                    <Section title="🎯 Modo de dieta">
-                      <div style={{ display: "flex", gap: 8 }}>
+                    <div className="card">
+                      <h3 style={{marginTop:0, color:'#e8b86d'}}>Datos Físicos</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <label style={{fontSize:11, color:'#668'}}>PESO (KG)<input type="number" value={p.weight} onChange={e=>save({profile:{...p, weight:e.target.value}})}/></label>
+                        <label style={{fontSize:11, color:'#668'}}>ALTURA (CM)<input type="number" value={p.height} onChange={e=>save({profile:{...p, height:e.target.value}})}/></label>
+                        <label style={{fontSize:11, color:'#668'}}>EDAD<input type="number" value={p.age} onChange={e=>save({profile:{...p, age:e.target.value}})}/></label>
+                        <label style={{fontSize:11, color:'#668'}}>ACTIVIDAD
+                          <select value={p.activity} onChange={e=>save({profile:{...p, activity:e.target.value}})}>
+                            <option value="sedentario">Sedentario</option>
+                            <option value="ligero">Ligero</option>
+                            <option value="moderado">Moderado</option>
+                            <option value="activo">Activo</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="card">
+                      <h3 style={{marginTop:0, color:'#e8b86d'}}>Objetivo de Dieta</h3>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
                         {DIET_MODES.map(m => (
-                          <button key={m.id} onClick={()=>save({diet:{...diet, mode:m.id}})} style={{ flex: 1, padding: 10, background: diet.mode === m.id ? "#1e1a0e" : "#0f0f1e", border: `1px solid ${diet.mode === m.id ? "#e8b86d" : "#1e1e30"}`, borderRadius: 10, cursor: "pointer" }}>
-                            <p style={{ margin: 0, fontSize: 18 }}>{m.emoji}</p>
-                            <p style={{ margin: 0, fontSize: 11, color: diet.mode === m.id ? "#e8b86d" : "#888" }}>{m.label}</p>
+                          <button key={m.id} onClick={()=>save({diet:{...d, mode:m.id}})} style={{ padding: 14, background: d.mode===m.id ? '#e8b86d' : '#1e1e30', border: 'none', borderRadius: 12, color: d.mode===m.id ? '#000' : '#fff', fontWeight:'bold' }}>
+                            <div style={{fontSize:24}}>{m.emoji}</div>{m.label}
                           </button>
                         ))}
                       </div>
-                    </Section>
-
-                    <Section title="💪 Macros (g/kg)">
-                      <Row label="Personalizar">
-                        <button onClick={()=>save({diet:{...diet, useCustomMacros:!diet.useCustomMacros}})} style={{ background: diet.useCustomMacros ? "#e8b86d" : "#1e1e30", border: "none", padding: "5px 10px", borderRadius: 8 }}>{diet.useCustomMacros ? "SÍ" : "NO"}</button>
-                      </Row>
-                      {[{k:"P",l:"Proteína",c:"#7ca8f0"},{k:"C",l:"Carbos",c:"#e8b86d"},{k:"F",l:"Grasa",c:"#e87d7d"}].map(m => (
-                        <Row key={m.k} label={m.l}>
-                          <input type="number" step="0.1" value={diet[`custom${m.k}`]} onChange={e=>save({diet:{...diet, [`custom${m.k}`]:e.target.value}})} style={{ width: 60, display: diet.useCustomMacros ? "block" : "none" }} />
-                          <span style={{ color: m.c, fontWeight: "bold" }}>{!diet.useCustomMacros && macroBase[m.k.toLowerCase()]} g/kg</span>
-                        </Row>
-                      ))}
-                    </Section>
+                    </div>
+                    <div className="card">
+                      <h3 style={{marginTop:0, color:'#e8b86d'}}>Configuración g/kg</h3>
+                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
+                        <div style={{textAlign:'center'}}><div style={{fontSize:10, color:'#7ca8f0'}}>PROT</div><input type="number" step="0.1" value={d.customP || mB.p} onChange={e=>save({diet:{...d, customP:e.target.value, useCustomMacros:true}})} /></div>
+                        <div style={{textAlign:'center'}}><div style={{fontSize:10, color:'#e8b86d'}}>CARB</div><input type="number" step="0.1" value={d.customC || mB.c} onChange={e=>save({diet:{...d, customC:e.target.value, useCustomMacros:true}})} /></div>
+                        <div style={{textAlign:'center'}}><div style={{fontSize:10, color:'#e87d7d'}}>GRAS</div><input type="number" step="0.1" value={d.customF || mB.f} onChange={e=>save({diet:{...d, customF:e.target.value, useCustomMacros:true}})} /></div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {tab === "wife" && (
                   <div>
-                    <div className="card" style={{ background: "linear-gradient(135deg,#150d20,#0d1520)", padding: 18 }}>
-                      <p style={{ color: "#97b", fontSize: 12 }}>💌 RESUMEN PARA LA CENA</p>
-                      <h2 style={{ color: "#e8b86d", margin: "10px 0" }}>{rem.cal} kcal restantes</h2>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                        <div style={{ background: "rgba(0,0,0,0.3)", padding: 10, borderRadius: 8 }}>
-                          <p style={{ margin: 0, fontSize: 10, color: "#668" }}>PROTEÍNA</p>
-                          <p style={{ margin: 0, color: "#7ca8f0", fontWeight: "bold" }}>{rem.p}g</p>
+                    <div className="card" style={{ background: 'linear-gradient(135deg, #1a0b2e, #090915)', border: '1px solid #3a1a5e' }}>
+                      <p style={{ fontSize: 10, color: '#a877f0', fontWeight:'bold', letterSpacing: 1.5 }}>FALTANTES PARA CERRAR EL DÍA</p>
+                      <h2 style={{ color: '#e8b86d', margin: '12px 0', fontSize: 28 }}>{rem.cal} <span style={{fontSize:14, color:'#557'}}>kcal</span></h2>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 20 }}>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid rgba(124,168,240,0.2)' }}>
+                          <div style={{fontSize:9, color:'#7ca8f0'}}>PROTEÍNA</div><div style={{fontSize:18, fontWeight:'800'}}>{rem.p}g</div>
                         </div>
-                        <div style={{ background: "rgba(0,0,0,0.3)", padding: 10, borderRadius: 8 }}>
-                          <p style={{ margin: 0, fontSize: 10, color: "#668" }}>CARBOS</p>
-                          <p style={{ margin: 0, color: "#e8b86d", fontWeight: "bold" }}>{rem.c}g</p>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid rgba(232,184,109,0.2)' }}>
+                          <div style={{fontSize:9, color:'#e8b86d'}}>CARBOS</div><div style={{fontSize:18, fontWeight:'800'}}>{rem.c}g</div>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid rgba(232,125,125,0.2)' }}>
+                          <div style={{fontSize:9, color:'#e87d7d'}}>GRASAS</div><div style={{fontSize:18, fontWeight:'800'}}>{rem.f}g</div>
                         </div>
                       </div>
                     </div>
-                    <Section title="🛒 Ingredientes disponibles">
-                      <textarea value={ingredients} onChange={e=>save({ingredients:e.target.value})} placeholder="Ej: Pollo, arroz, huevos..." style={{ minHeight: 100 }} />
-                    </Section>
-                    <button onClick={getSuggestion} disabled={aiLoading} style={{ width: "100%", padding: 16, background: "linear-gradient(135deg,#e8b86d,#c8784a)", border: "none", borderRadius: 14, fontWeight: "bold", fontSize: 16, cursor: "pointer" }}>
-                      {aiLoading ? "✨ Generando..." : "✨ Generar Cena con IA"}
+                    <div className="card">
+                      <p style={{fontSize:12, color:'#888', marginBottom:10}}>¿QUÉ HAY EN EL REFRI?</p>
+                      <textarea placeholder="Ej: Pechuga de pollo, espinacas, 2 huevos, palta..." value={ingredients} onChange={e=>save({ingredients:e.target.value})} style={{ minHeight: 110, lineHeight: 1.5 }} />
+                    </div>
+                    <button className="btn-gold" style={{ width: '100%', fontSize: 16, padding: 20 }} onClick={getAi} disabled={aiLoading}>
+                      {aiLoading ? "✨ Gemini está pensando..." : "✨ Pedir opciones de cena"}
                     </button>
-                    {aiText && <div className="card" style={{ marginTop: 15, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{aiText}</div>}
+                    {aiText && (
+                      <div className="card" style={{ marginTop: 20, whiteSpace: 'pre-wrap', lineHeight: 1.7, fontSize: 15, background: '#080810', borderLeft: '4px solid #e8b86d' }}>
+                        {aiText}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
