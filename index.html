@@ -11,11 +11,11 @@
         body { margin: 0; background: #080810; color: #eee8e0; font-family: -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
         .card { background: #0f0f1e; border: 1px solid #1e1e35; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
         input, select, textarea { background: #080810; border: 1px solid #2a2a40; border-radius: 10px; padding: 12px; color: #eee8e0; font-size: 14px; width: 100%; box-sizing: border-box; outline: none; }
-        input:focus { border-color: #e8b86d; }
-        .btn-gold { background: linear-gradient(135deg, #e8b86d, #c8784a); color: #080810; border: none; border-radius: 12px; font-weight: 800; padding: 14px; cursor: pointer; transition: transform 0.1s; }
-        .btn-gold:active { transform: scale(0.98); }
-        .tab-btn { flex: 1; padding: 16px; background: none; border: none; font-weight: bold; color: #557; cursor: pointer; border-bottom: 2px solid transparent; transition: 0.3s; }
+        .btn-gold { background: linear-gradient(135deg, #e8b86d, #c8784a); color: #080810; border: none; border-radius: 12px; font-weight: 800; padding: 14px; cursor: pointer; }
+        .tab-btn { flex: 1; padding: 16px; background: none; border: none; font-weight: bold; color: #557; cursor: pointer; border-bottom: 2px solid transparent; }
         .tab-active { color: #e8b86d; border-bottom-color: #e8b86d; background: rgba(232, 184, 109, 0.05); }
+        .food-guide { background: rgba(232, 184, 109, 0.1); border: 1px dashed #e8b86d; border-radius: 12px; padding: 12px; margin-top: 10px; }
+        .crudo-badge { background: #e87d7d; color: #fff; font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 5px; }
     </style>
 </head>
 <body>
@@ -56,7 +56,7 @@
                 <circle cx="37.5" cy="37.5" r={r} fill="none" stroke={color} strokeWidth="7" strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" transform="rotate(-90 37.5 37.5)" style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
                 <text x="37.5" y="42" textAnchor="middle" fill="#fff" fontSize="12" fontWeight="800">{Math.round(pct)}%</text>
               </svg>
-              <div style={{ fontSize: 10, color: '#668', marginTop: 4, fontWeight: 'bold' }}>{label}</div>
+              <div style={{ fontSize: 10, color: '#668', marginTop: 4 }}>{label}</div>
               <div style={{ fontSize: 14, color, fontWeight: '800' }}>{Math.round(value)}g</div>
             </div>
           );
@@ -67,15 +67,10 @@
           const [store, setStore] = useState(() => load());
           const [aiText, setAiText] = useState("");
           const [aiLoading, setAiLoading] = useState(false);
-          
-          // Formulario completo (Nombre, Calorías, P, C, G)
           const [newItem, setNewItem] = useState({ name: "", cal: "", p: "", c: "", f: "" });
 
-          // ************************************************************
-          // LÍNEA 118: PEGA TU CLAVE DE API DE GEMINI AQUÍ
-          // ************************************************************
-          const API_KEY = ""; 
-          // ************************************************************
+          // --- API KEY ---
+          const API_KEY = "AIzaSyA2n3EdwO-EG6Ed7C1If0-4CM4KOXub-RY"; 
 
           const p = store.profile || { weight: 81.5, height: 180, age: 41, sex: "m", activity: "moderado" };
           const d = store.diet || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
@@ -84,31 +79,33 @@
 
           const save = (patch) => { const next = { ...store, ...patch }; setStore(next); persist(next); };
 
-          // Cálculos de TDEE y Metas
           const tdee = calcTDEE(Number(p.weight), Number(p.height), Number(p.age), p.sex, p.activity);
           const modeObj = DIET_MODES.find(m => m.id === d.mode) || DIET_MODES[1];
           const goalCal = Math.round(tdee * (1 + (d.useCustomPct ? Number(d.customPct) : modeObj.pct) / 100));
-          
           const mB = d.useCustomMacros ? { p: d.customP, c: d.customC, f: d.customF } : MACRO_PRESETS[d.mode];
           const gP = Math.round(mB.p * p.weight);
           const gC = Math.round(mB.c * p.weight);
           const gF = Math.round(mB.f * p.weight);
 
-          // Suma de consumo actual
           const consumed = meals.reduce((acc, m) => ({
-            cal: acc.cal + Number(m.cal || 0), 
-            p: acc.p + Number(m.p || 0), 
-            c: acc.c + Number(m.c || 0), 
-            f: acc.f + Number(m.f || 0)
+            cal: acc.cal + Number(m.cal || 0), p: acc.p + Number(m.p || 0), c: acc.c + Number(m.c || 0), f: acc.f + Number(m.f || 0)
           }), { cal: 0, p: 0, c: 0, f: 0 });
 
-          const rem = { cal: goalCal - consumed.cal, p: gP - consumed.p, c: gC - consumed.c, f: gF - consumed.f };
-          const perKg = { p: consumed.p / p.weight, c: consumed.c / p.weight, f: consumed.f / p.weight };
+          const rem = { cal: goalCal - consumed.cal, p: Math.max(0, gP - consumed.p), c: Math.max(0, gC - consumed.c), f: Math.max(0, gF - consumed.f) };
+
+          // --- CONVERSIÓN A PESO EN CRUDO ---
+          // Carne/Pollo/Pescado Crudo: ~22g P por cada 100g
+          // Queso Manchego: ~25g P por cada 100g
+          const grCarneCruda = Math.round((rem.p / 22) * 100);
+          const grQueso = Math.round((rem.p / 25) * 100);
 
           async function getAi() {
-            if (!API_KEY) { alert("Falta API Key en la línea 118"); return; }
+            if (!API_KEY) return;
             setAiLoading(true); setAiText("");
-            const prompt = `Eres un nutriólogo experto. Sugiere 3 opciones de cena para alguien que necesita: ${rem.cal}kcal, ${rem.p}g Proteína, ${rem.c}g Carbos y ${rem.f}g Grasa. Ingredientes: ${ingredients}. Sé amable y usa un lenguaje claro para mi esposa.`;
+            const prompt = `Actúa como un nutriólogo experto hablando con mi esposa. Necesito una cena que cubra: ${rem.cal}kcal, ${rem.p}g P, ${rem.c}g C, ${rem.f}g F. 
+            IMPORTANTE: Ella pesa todo EN CRUDO (antes de cocinar). Cuando sugieras pescado, res o puerco, da los gramos exactos EN CRUDO.
+            Usa estos ingredientes: ${ingredients}. Sé muy cariñoso con ella en el mensaje.`;
+            
             try {
               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
@@ -116,13 +113,13 @@
               });
               const data = await res.json();
               setAiText(data.candidates[0].content.parts[0].text);
-            } catch (e) { setAiText("Error de conexión. Revisa tu clave."); }
+            } catch (e) { setAiText("Error de conexión."); }
             setAiLoading(false);
           }
 
           return (
             <div style={{ maxWidth: 500, margin: "0 auto", paddingBottom: 100 }}>
-              <nav style={{ display: 'flex', background: '#0d0d1a', sticky: 'top', zIndex: 10 }}>
+              <nav style={{ display: 'flex', background: '#0d0d1a' }}>
                 <button onClick={() => setTab("day")} className={`tab-btn ${tab === 'day' ? 'tab-active' : ''}`}>📊 Día</button>
                 <button onClick={() => setTab("config")} className={`tab-btn ${tab === 'config' ? 'tab-active' : ''}`}>⚙️ Perfil</button>
                 <button onClick={() => setTab("wife")} className={`tab-btn ${tab === 'wife' ? 'tab-active' : ''}`}>💌 Esposa</button>
@@ -132,114 +129,87 @@
                 {tab === "day" && (
                   <div>
                     <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div><div style={{ fontSize: 11, color: '#668', letterSpacing: 1 }}>CONSUMO</div><div style={{ fontSize: 40, fontWeight: 900, color: '#e8b86d' }}>{consumed.cal}</div></div>
-                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: '#668' }}>META</div><div style={{ fontSize: 22, fontWeight: 700, color: '#7ca8f0' }}>{goalCal}</div><div style={{ fontSize: 12, color: rem.cal < 0 ? '#e87d7d' : '#557', marginTop: 4 }}>{rem.cal < 0 ? 'Exceso' : 'Faltan'} {Math.abs(rem.cal)} kcal</div></div>
+                      <div><div style={{ fontSize: 11, color: '#668' }}>CONSUMO</div><div style={{ fontSize: 40, fontWeight: 900, color: '#e8b86d' }}>{consumed.cal}</div></div>
+                      <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: '#668' }}>META</div><div style={{ fontSize: 22, fontWeight: 700, color: '#7ca8f0' }}>{goalCal}</div></div>
                     </div>
-
-                    <div className="card" style={{ display: 'flex', justifyContent: 'space-around', padding: '24px 10px' }}>
+                    <div className="card" style={{ display: 'flex', justifyContent: 'space-around' }}>
                       <MiniRing pct={(consumed.p/gP)*100} color="#7ca8f0" label="PROT" value={consumed.p} />
                       <MiniRing pct={(consumed.c/gC)*100} color="#e8b86d" label="CARB" value={consumed.c} />
                       <MiniRing pct={(consumed.f/gF)*100} color="#e87d7d" label="GRAS" value={consumed.f} />
                     </div>
-
                     <div className="card">
-                      <p style={{ margin: '0 0 14px', fontSize: 12, color: '#888', fontWeight: 'bold' }}>REGISTRAR ALIMENTO</p>
-                      <input placeholder="Nombre (ej: Pollo a la plancha)" value={newItem.name} onChange={e=>setNewItem({...newItem, name:e.target.value})} style={{ marginBottom: 12 }} />
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) 54px', gap: 8 }}>
-                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#668'}}>kcal</span><input type="number" value={newItem.cal} onChange={e=>setNewItem({...newItem, cal:e.target.value})} /></div>
-                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#7ca8f0'}}>P(g)</span><input type="number" value={newItem.p} onChange={e=>setNewItem({...newItem, p:e.target.value})} /></div>
-                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#e8b86d'}}>C(g)</span><input type="number" value={newItem.c} onChange={e=>setNewItem({...newItem, c:e.target.value})} /></div>
-                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#e87d7d'}}>G(g)</span><input type="number" value={newItem.f} onChange={e=>setNewItem({...newItem, f:e.target.value})} /></div>
-                        <button className="btn-gold" style={{marginTop: 15, padding: 0, height: 42}} onClick={()=>{
-                          if(!newItem.name || !newItem.cal) return;
-                          save({[today()]: [...meals, {...newItem, cal:Number(newItem.cal), p:Number(newItem.p||0), c:Number(newItem.c||0), f:Number(newItem.f||0)}]});
+                      <input placeholder="Alimento..." value={newItem.name} onChange={e=>setNewItem({...newItem, name:e.target.value})} style={{ marginBottom: 10 }} />
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) 50px', gap: 6 }}>
+                        <input type="number" placeholder="kcal" value={newItem.cal} onChange={e=>setNewItem({...newItem, cal:e.target.value})} />
+                        <input type="number" placeholder="P" value={newItem.p} onChange={e=>setNewItem({...newItem, p:e.target.value})} />
+                        <input type="number" placeholder="C" value={newItem.c} onChange={e=>setNewItem({...newItem, c:e.target.value})} />
+                        <input type="number" placeholder="G" value={newItem.f} onChange={e=>setNewItem({...newItem, f:e.target.value})} />
+                        <button className="btn-gold" onClick={()=>{
+                          if(!newItem.name) return;
+                          save({[today()]: [...meals, {...newItem, cal:+newItem.cal, p:+newItem.p, c:+newItem.c, f:+newItem.f}]});
                           setNewItem({name:"", cal:"", p:"", c:"", f:""});
                         }}>+</button>
                       </div>
                     </div>
-
-                    {meals.length > 0 && (
-                      <div className="card">
-                        <p style={{ margin: '0 0 10px', fontSize: 12, color: '#888' }}>HISTORIAL</p>
-                        {meals.map((m, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #1a1a28' }}>
-                            <div><div style={{fontSize:14, fontWeight:600}}>{m.name}</div><div style={{fontSize:11, color:'#557'}}>P:{m.p}g | C:{m.c}g | G:{m.f}g</div></div>
-                            <div style={{display:'flex', alignItems:'center', gap:14}}>
-                              <span style={{color:'#e8b86d', fontWeight:'800'}}>{m.cal}</span>
-                              <button onClick={() => save({[today()]: meals.filter((_, idx) => idx !== i)})} style={{ background: 'none', border: 'none', color: '#433', fontSize: 18, cursor: 'pointer' }}>✕</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
 
                 {tab === "config" && (
-                  <div>
-                    <div className="card">
-                      <h3 style={{marginTop:0, color:'#e8b86d'}}>Datos Físicos</h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                        <label style={{fontSize:11, color:'#668'}}>PESO (KG)<input type="number" value={p.weight} onChange={e=>save({profile:{...p, weight:e.target.value}})}/></label>
-                        <label style={{fontSize:11, color:'#668'}}>ALTURA (CM)<input type="number" value={p.height} onChange={e=>save({profile:{...p, height:e.target.value}})}/></label>
-                        <label style={{fontSize:11, color:'#668'}}>EDAD<input type="number" value={p.age} onChange={e=>save({profile:{...p, age:e.target.value}})}/></label>
-                        <label style={{fontSize:11, color:'#668'}}>ACTIVIDAD
-                          <select value={p.activity} onChange={e=>save({profile:{...p, activity:e.target.value}})}>
-                            <option value="sedentario">Sedentario</option>
-                            <option value="ligero">Ligero</option>
-                            <option value="moderado">Moderado</option>
-                            <option value="activo">Activo</option>
-                          </select>
-                        </label>
-                      </div>
-                    </div>
-                    <div className="card">
-                      <h3 style={{marginTop:0, color:'#e8b86d'}}>Objetivo de Dieta</h3>
-                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
-                        {DIET_MODES.map(m => (
-                          <button key={m.id} onClick={()=>save({diet:{...d, mode:m.id}})} style={{ padding: 14, background: d.mode===m.id ? '#e8b86d' : '#1e1e30', border: 'none', borderRadius: 12, color: d.mode===m.id ? '#000' : '#fff', fontWeight:'bold' }}>
-                            <div style={{fontSize:24}}>{m.emoji}</div>{m.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="card">
-                      <h3 style={{marginTop:0, color:'#e8b86d'}}>Configuración g/kg</h3>
-                      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10}}>
-                        <div style={{textAlign:'center'}}><div style={{fontSize:10, color:'#7ca8f0'}}>PROT</div><input type="number" step="0.1" value={d.customP || mB.p} onChange={e=>save({diet:{...d, customP:e.target.value, useCustomMacros:true}})} /></div>
-                        <div style={{textAlign:'center'}}><div style={{fontSize:10, color:'#e8b86d'}}>CARB</div><input type="number" step="0.1" value={d.customC || mB.c} onChange={e=>save({diet:{...d, customC:e.target.value, useCustomMacros:true}})} /></div>
-                        <div style={{textAlign:'center'}}><div style={{fontSize:10, color:'#e87d7d'}}>GRAS</div><input type="number" step="0.1" value={d.customF || mB.f} onChange={e=>save({diet:{...d, customF:e.target.value, useCustomMacros:true}})} /></div>
-                      </div>
-                    </div>
+                  <div className="card">
+                    <h3 style={{color:'#e8b86d'}}>Ajustes de Perfil</h3>
+                    <label style={{fontSize:12, color:'#668'}}>PESO (KG)</label>
+                    <input type="number" value={p.weight} onChange={e=>save({profile:{...p, weight:e.target.value}})} style={{marginBottom:15}}/>
+                    <label style={{fontSize:12, color:'#668'}}>ACTIVIDAD</label>
+                    <select value={p.activity} onChange={e=>save({profile:{...p, activity:e.target.value}})}>
+                        <option value="sedentario">Sedentario</option>
+                        <option value="ligero">Ligero</option>
+                        <option value="moderado">Moderado</option>
+                        <option value="activo">Activo</option>
+                    </select>
                   </div>
                 )}
 
                 {tab === "wife" && (
                   <div>
                     <div className="card" style={{ background: 'linear-gradient(135deg, #1a0b2e, #090915)', border: '1px solid #3a1a5e' }}>
-                      <p style={{ fontSize: 10, color: '#a877f0', fontWeight:'bold', letterSpacing: 1.5 }}>FALTANTES PARA CERRAR EL DÍA</p>
-                      <h2 style={{ color: '#e8b86d', margin: '12px 0', fontSize: 28 }}>{rem.cal} <span style={{fontSize:14, color:'#557'}}>kcal</span></h2>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 20 }}>
-                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid rgba(124,168,240,0.2)' }}>
-                          <div style={{fontSize:9, color:'#7ca8f0'}}>PROTEÍNA</div><div style={{fontSize:18, fontWeight:'800'}}>{rem.p}g</div>
+                      <p style={{ fontSize: 10, color: '#a877f0', fontWeight:'bold' }}>REPORTE PARA COCINAR</p>
+                      <h2 style={{ color: '#e8b86d', margin: '10px 0' }}>Faltan {rem.cal} kcal</h2>
+                      
+                      <div className="food-guide">
+                        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#e8b86d', fontWeight: 'bold' }}>
+                          ⚖️ Guía de Pesos <span className="crudo-badge">EN CRUDO</span>
+                        </p>
+                        <div style={{ fontSize: 14, lineHeight: '1.8' }}>
+                          • <b>{grCarneCruda}g</b> de Carne magra cruda (Pescado, Res o Puerco).<br/>
+                          • <b>{grQueso}g</b> de Queso Manchego.
                         </div>
-                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid rgba(232,184,109,0.2)' }}>
-                          <div style={{fontSize:9, color:'#e8b86d'}}>CARBOS</div><div style={{fontSize:18, fontWeight:'800'}}>{rem.c}g</div>
+                        <p style={{fontSize:10, color:'#888', marginTop:10, fontStyle:'italic'}}>*Pesos calculados antes de cocinar para cubrir {rem.p}g de proteína.</p>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 15 }}>
+                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 10, textAlign:'center' }}>
+                          <div style={{fontSize:9, color:'#7ca8f0'}}>PROTEÍNA</div><div style={{fontWeight:'bold'}}>{rem.p}g</div>
                         </div>
-                        <div style={{ background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid rgba(232,125,125,0.2)' }}>
-                          <div style={{fontSize:9, color:'#e87d7d'}}>GRASAS</div><div style={{fontSize:18, fontWeight:'800'}}>{rem.f}g</div>
+                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 10, textAlign:'center' }}>
+                          <div style={{fontSize:9, color:'#e8b86d'}}>CARBOS</div><div style={{fontWeight:'bold'}}>{rem.c}g</div>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: 8, borderRadius: 10, textAlign:'center' }}>
+                          <div style={{fontSize:9, color:'#e87d7d'}}>GRASAS</div><div style={{fontWeight:'bold'}}>{rem.f}g</div>
                         </div>
                       </div>
                     </div>
+
                     <div className="card">
-                      <p style={{fontSize:12, color:'#888', marginBottom:10}}>¿QUÉ HAY EN EL REFRI?</p>
-                      <textarea placeholder="Ej: Pechuga de pollo, espinacas, 2 huevos, palta..." value={ingredients} onChange={e=>save({ingredients:e.target.value})} style={{ minHeight: 110, lineHeight: 1.5 }} />
+                      <p style={{fontSize:12, color:'#888', marginBottom:10}}>¿QUÉ INGREDIENTES HAY EN LA COCINA?</p>
+                      <textarea placeholder="Ej: Pollo, pescado, espinacas, calabacita, huevos..." value={ingredients} onChange={e=>save({ingredients:e.target.value})} style={{ minHeight: 80 }} />
                     </div>
-                    <button className="btn-gold" style={{ width: '100%', fontSize: 16, padding: 20 }} onClick={getAi} disabled={aiLoading}>
-                      {aiLoading ? "✨ Gemini está pensando..." : "✨ Pedir opciones de cena"}
+
+                    <button className="btn-gold" style={{ width: '100%' }} onClick={getAi} disabled={aiLoading}>
+                      {aiLoading ? "✨ Calculando con IA..." : "✨ Generar Cena (Peso en Crudo)"}
                     </button>
+
                     {aiText && (
-                      <div className="card" style={{ marginTop: 20, whiteSpace: 'pre-wrap', lineHeight: 1.7, fontSize: 15, background: '#080810', borderLeft: '4px solid #e8b86d' }}>
+                      <div className="card" style={{ marginTop: 20, whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6, borderLeft: '4px solid #e8b86d' }}>
                         {aiText}
                       </div>
                     )}
