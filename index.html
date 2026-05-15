@@ -7,98 +7,101 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>body { margin: 0; background: #080810; font-family: sans-serif; }</style>
+    <style>
+        body { margin: 0; background: #080810; color: #eee8e0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        .card { background: #0f0f1e; border: 1px solid #1e1e35; border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+        .btn-ai { width: 100%; padding: 16px; border: none; border-radius: 14px; background: linear-gradient(135deg,#e8b86d,#c8784a); color: #080810; font-weight: 700; cursor: pointer; font-size: 15px; }
+        textarea { width: 100%; min-height: 100px; background: #080810; border: 1px solid #2a2a40; border-radius: 10px; padding: 12px; color: #eee8e0; font-family: inherit; box-sizing: border-box; }
+    </style>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState } = React;
 
-        // Configuración de almacenamiento
         const SK = "macro_tracker_v2";
         const today = () => new Date().toISOString().split("T")[0];
         const load = () => { try { return JSON.parse(localStorage.getItem(SK)) || {}; } catch { return {}; } };
         const persist = d => localStorage.setItem(SK, JSON.stringify(d));
 
-        const DIET_MODES = [
-          { id: "deficit", label: "Déficit", desc: "Perder grasa", emoji: "🔥", pct: -20 },
-          { id: "mantenimiento", label: "Mantenimiento", desc: "Peso estable", emoji: "⚖️", pct: 0 },
-          { id: "superavit", label: "Superávit", desc: "Ganar músculo", emoji: "💪", pct: +15 },
-        ];
-
-        const MACRO_PRESETS = {
-          deficit: { p: 2.4, c: 2.0, f: 0.8 },
-          mantenimiento: { p: 2.0, c: 3.0, f: 1.0 },
-          superavit: { p: 2.2, c: 4.5, f: 1.2 },
-        };
-
         function App() {
-          const [tab, setTab] = useState("day");
-          const [store, setStore] = useState(() => load());
-          const [aiText, setAiText] = useState("");
-          const [aiLoading, setAiLoading] = useState(false);
+            const [tab, setTab] = useState("day");
+            const [store, setStore] = useState(() => load());
+            const [aiText, setAiText] = useState("");
+            const [aiLoading, setAiLoading] = useState(false);
 
-          const profile = store.profile || { weight: 75, height: 175, age: 30, sex: "m", activity: "moderado" };
-          const diet = store.diet || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
-          const meals = store[today()] || [];
-          const ingredients = store.ingredients || "";
+            const profile = store.profile || { weight: 81.5, height: 180, age: 41, sex: "m", activity: "moderado" };
+            const meals = store[today()] || [];
+            const ingredients = store.ingredients || "";
+            const goalCal = 2158;
 
-          const goalCal = 2000; // Valor simplificado para la prueba
-          const consumed = meals.reduce((acc, m) => ({ cal: acc.cal + m.cal, p: acc.p + m.p, c: acc.c + m.c, f: acc.f + m.f }), { cal: 0, p: 0, c: 0, f: 0 });
+            const consumed = meals.reduce((acc, m) => ({ cal: acc.cal + m.cal, p: acc.p + m.p, c: acc.c + m.c, f: acc.f + m.f }), { cal: 0, p: 0, c: 0, f: 0 });
 
-          async function getSuggestion() {
-            setAiLoading(true);
-            try {
-              const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyCdUk114BoW7aQMHzOZHGDyHflcbKZ8ir4", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: `Sugiere 3 cenas saludables con estos ingredientes: ${ingredients}. El objetivo es una dieta de ${diet.mode}.` }] }]
-                }),
-              });
-              const json = await res.json();
-              setAiText(json.candidates[0].content.parts[0].text);
-            } catch (err) {
-              setAiText("Error al conectar con Gemini. Revisa la consola.");
+            async function getSuggestion() {
+                setAiLoading(true); setAiText("");
+                try {
+                    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyCdUk114BoW7aQMHzOZHGDyHflcbKZ8ir4", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: `Eres un nutriólogo experto. Sugiere 3 cenas con estos ingredientes: ${ingredients}. El usuario busca un déficit calórico. Macros restantes: ${goalCal - consumed.cal} kcal. Formato amable para su esposa.` }] }]
+                        }),
+                    });
+                    const json = await res.json();
+                    setAiText(json.candidates[0].content.parts[0].text);
+                } catch (e) { setAiText("Error en la conexión."); }
+                setAiLoading(false);
             }
-            setAiLoading(false);
-          }
 
-          return (
-            <div style={{ color: "#eee", padding: 20 }}>
-              <nav style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-                <button onClick={() => setTab("day")}>📊 Mi día</button>
-                <button onClick={() => setTab("wife")}>💌 Esposa</button>
-              </nav>
-              
-              {tab === "day" && (
-                <div>
-                  <h2>Calorías: {consumed.cal} / {goalCal}</h2>
-                  <p>Usa la pestaña "Esposa" para generar cenas.</p>
-                </div>
-              )}
+            return (
+                <div style={{ maxWidth: 500, margin: "0 auto", padding: "0 14px 80px" }}>
+                    <header style={{ padding: "20px 0", borderBottom: "1px solid #1e1e30" }}>
+                        <h1 style={{ fontSize: 22, margin: 0 }}>🥗 Balance & Macros</h1>
+                        <p style={{ color: "#557", fontSize: 12, margin: "4px 0 0" }}>Viernes, 15 de mayo de 2026</p>
+                    </header>
 
-              {tab === "wife" && (
-                <div>
-                  <textarea 
-                    placeholder="Ingredientes en casa..." 
-                    value={ingredients} 
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const next = { ...store, ingredients: val };
-                      setStore(next);
-                      persist(next);
-                    }}
-                    style={{ width: "100%", height: 100, background: "#111", color: "#fff", padding: 10 }}
-                  />
-                  <button onClick={getSuggestion} disabled={aiLoading} style={{ width: "100%", padding: 15, marginTop: 10, background: "#e8b86d" }}>
-                    {aiLoading ? "Cocinando ideas..." : "Generar Cena con Gemini"}
-                  </button>
-                  <div style={{ marginTop: 20, whiteSpace: "pre-wrap" }}>{aiText}</div>
+                    <nav style={{ display: "flex", margin: "15px 0", background: "#0d0d1a", borderRadius: 10 }}>
+                        {["day", "config", "wife"].map(t => (
+                            <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: 12, background: "transparent", border: "none", color: tab === t ? "#e8b86d" : "#557", fontWeight: 700, cursor: "pointer" }}>
+                                {t === "day" ? "📊 Mi día" : t === "config" ? "⚙️ Perfil" : "💌 Mi esposa"}
+                            </button>
+                        ))}
+                    </nav>
+
+                    {tab === "day" && (
+                        <div className="card">
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <div>
+                                    <p style={{ margin: 0, fontSize: 11, color: "#668" }}>CONSUMIDAS</p>
+                                    <p style={{ margin: 0, fontSize: 38, fontWeight: 700, color: "#e8b86d" }}>{consumed.cal} <span style={{ fontSize: 14 }}>kcal</span></p>
+                                </div>
+                                <div style={{ textAlign: "right" }}>
+                                    <p style={{ margin: 0, fontSize: 11, color: "#668" }}>META 🔥</p>
+                                    <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#7ca8f0" }}>{goalCal}</p>
+                                    <p style={{ margin: 0, fontSize: 10, color: "#557" }}>Faltan {goalCal - consumed.cal} kcal</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {tab === "wife" && (
+                        <div>
+                            <div className="card">
+                                <p style={{ margin: "0 0 10px", fontSize: 12, color: "#97b", fontWeight: 700 }}>💌 RESUMEN PARA LA CENA</p>
+                                <textarea 
+                                    placeholder="Ej: Pollo, brócoli, huevos..." 
+                                    value={ingredients} 
+                                    onChange={(e) => { setStore({...store, ingredients: e.target.value}); persist({...store, ingredients: e.target.value}); }}
+                                />
+                            </div>
+                            <button className="btn-ai" onClick={getSuggestion} disabled={aiLoading}>
+                                {aiLoading ? "✨ Generando..." : "✨ Generar opciones de cena"}
+                            </button>
+                            {aiText && <div className="card" style={{ marginTop: 15, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{aiText}</div>}
+                        </div>
+                    )}
                 </div>
-              )}
-            </div>
-          );
+            );
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
