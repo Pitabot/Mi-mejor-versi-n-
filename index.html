@@ -11,7 +11,7 @@
         body { margin: 0; background: #080810; color: #eee8e0; font-family: -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
         .card { background: #0f0f1e; border: 1px solid #1e1e35; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
         input, select, textarea { background: #080810; border: 1px solid #2a2a40; border-radius: 10px; padding: 12px; color: #eee8e0; font-size: 14px; width: 100%; box-sizing: border-box; outline: none; }
-        .btn-gold { background: linear-gradient(135deg, #e8b86d, #c8784a); color: #080810; border: none; border-radius: 12px; font-weight: 800; padding: 14px; cursor: pointer; }
+        .btn-gold { background: linear-gradient(135deg, #e8b86d, #c8784a); color: #080810; border: none; border-radius: 12px; font-weight: 800; padding: 14px; cursor: pointer; text-align: center; display: block; width: 100%; }
         .tab-btn { flex: 1; padding: 16px; background: none; border: none; font-weight: bold; color: #557; cursor: pointer; border-bottom: 2px solid transparent; }
         .tab-active { color: #e8b86d; border-bottom-color: #e8b86d; background: rgba(232, 184, 109, 0.05); }
         .food-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
@@ -23,7 +23,7 @@
 <body>
     <div id="root"></div>
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
 
         const SK = "macro_tracker_v2";
         const today = () => new Date().toISOString().split("T")[0];
@@ -58,7 +58,7 @@
                 <circle cx="37.5" cy="37.5" r={r} fill="none" stroke={color} strokeWidth="7" strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" transform="rotate(-90 37.5 37.5)" style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
                 <text x="37.5" y="42" textAnchor="middle" fill="#fff" fontSize="12" fontWeight="800">{Math.round(pct)}%</text>
               </svg>
-              <div style={{ fontSize: 10, color: '#668', marginTop: 4 }}>{label}</div>
+              <div style={{ fontSize: 10, color: '#668', marginTop: 4, fontWeight: 'bold' }}>{label}</div>
               <div style={{ fontSize: 14, color, fontWeight: '800' }}>{Math.round(value)}g</div>
             </div>
           );
@@ -71,7 +71,8 @@
           const [aiLoading, setAiLoading] = useState(false);
           const [newItem, setNewItem] = useState({ name: "", cal: "", p: "", c: "", f: "" });
 
-          const API_KEY = "AIzaSyA2n3EdwO-EG6Ed7C1If0-4CM4KOXub-RY"; // LÍNEA 118: TU CLAVE AQUÍ
+          // --- API KEY ---
+          const API_KEY = "AIzaSyA2n3EdwO-EG6Ed7C1If0-4CM4KOXub-RY"; // <--- LÍNEA 116: PEGA TU CLAVE AQUÍ
 
           const p = store.profile || { weight: 81.5, height: 180, age: 41, sex: "m", activity: "moderado" };
           const d = store.diet || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
@@ -94,22 +95,18 @@
 
           const rem = { cal: goalCal - consumed.cal, p: Math.max(0, gP - consumed.p), c: Math.max(0, gC - consumed.c), f: Math.max(0, gF - consumed.f) };
 
-          // --- CÁLCULO DE PORCIONES INDIVIDUALES (PESO CRUDO) ---
-          const portions = [
-            { name: "Pechuga de Pavo", factor: 24 }, // 24g P / 100g
-            { name: "Pechuga de Pollo", factor: 23 },
-            { name: "Res (Corte magro)", factor: 22 },
-            { name: "Pescado Blanco", factor: 20 },
-            { name: "Lomo de Cerdo", factor: 21 },
-            { name: "Huevo (Unidades)", factor: 6, unit: "piezas" }, // 1 huevo grande ~ 6g P
-            { name: "Queso Manchego", factor: 25 }
+          const foodRef = [
+            { name: "Pechuga de Pavo", f: 24 }, { name: "Pechuga de Pollo", f: 23 },
+            { name: "Res (Magra)", f: 22 }, { name: "Pescado Blanco", f: 20 },
+            { name: "Lomo de Cerdo", f: 21 }, { name: "Huevo", f: 6, u: "pzas" },
+            { name: "Queso Manchego", f: 25 }
           ];
 
           async function getAi() {
             if (!API_KEY) return;
             setAiLoading(true); setAiText("");
-            const prompt = `Eres un nutriólogo experto. Sugiere una cena para mi esposa que cubra: ${rem.cal}kcal, ${rem.p}g P, ${rem.c}g C, ${rem.f}g F. 
-            IMPORTANTE: Da las porciones exactas EN CRUDO y por separado (no generalices carnes). Si sugieres huevo, dalo en piezas. 
+            const prompt = `Nutriólogo experto. Sugiere cena para mi esposa: ${rem.cal}kcal, ${rem.p}g P, ${rem.c}g C, ${rem.f}g F. 
+            IMPORTANTE: Da porciones exactas EN CRUDO y por separado para cada carne. Ella pesa antes de cocinar. 
             Ingredientes: ${ingredients}. Sé muy cariñoso.`;
             try {
               const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
@@ -124,8 +121,8 @@
 
           return (
             <div style={{ maxWidth: 500, margin: "0 auto", paddingBottom: 100 }}>
-              <nav style={{ display: 'flex', background: '#0d0d1a' }}>
-                <button onClick={() => setTab("day")} className={`tab-btn ${tab === 'day' ? 'tab-active' : ''}`}>📊 Día</button>
+              <nav style={{ display: 'flex', background: '#0d0d1a', borderBottom: '1px solid #1e1e30' }}>
+                <button onClick={() => setTab("day")} className={`tab-btn ${tab === 'day' ? 'tab-active' : ''}`}>📊 Mi Día</button>
                 <button onClick={() => setTab("config")} className={`tab-btn ${tab === 'config' ? 'tab-active' : ''}`}>⚙️ Perfil</button>
                 <button onClick={() => setTab("wife")} className={`tab-btn ${tab === 'wife' ? 'tab-active' : ''}`}>💌 Esposa</button>
               </nav>
@@ -143,14 +140,14 @@
                       <MiniRing pct={(consumed.f/gF)*100} color="#e87d7d" label="GRAS" value={consumed.f} />
                     </div>
                     <div className="card">
-                      <input placeholder="Alimento..." value={newItem.name} onChange={e=>setNewItem({...newItem, name:e.target.value})} style={{ marginBottom: 10 }} />
+                      <input placeholder="Comida..." value={newItem.name} onChange={e=>setNewItem({...newItem, name:e.target.value})} style={{ marginBottom: 12 }} />
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr) 50px', gap: 6 }}>
-                        <input type="number" placeholder="kcal" value={newItem.cal} onChange={e=>setNewItem({...newItem, cal:e.target.value})} />
-                        <input type="number" placeholder="P" value={newItem.p} onChange={e=>setNewItem({...newItem, p:e.target.value})} />
-                        <input type="number" placeholder="C" value={newItem.c} onChange={e=>setNewItem({...newItem, c:e.target.value})} />
-                        <input type="number" placeholder="G" value={newItem.f} onChange={e=>setNewItem({...newItem, f:e.target.value})} />
-                        <button className="btn-gold" onClick={()=>{
-                          if(!newItem.name) return;
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#668'}}>kcal</span><input type="number" value={newItem.cal} onChange={e=>setNewItem({...newItem, cal:e.target.value})} /></div>
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#7ca8f0'}}>P</span><input type="number" value={newItem.p} onChange={e=>setNewItem({...newItem, p:e.target.value})} /></div>
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#e8b86d'}}>C</span><input type="number" value={newItem.c} onChange={e=>setNewItem({...newItem, c:e.target.value})} /></div>
+                        <div style={{textAlign:'center'}}><span style={{fontSize:10, color:'#e87d7d'}}>G</span><input type="number" value={newItem.f} onChange={e=>setNewItem({...newItem, f:e.target.value})} /></div>
+                        <button className="btn-gold" style={{marginTop:15, height:42, padding:0}} onClick={()=>{
+                          if(!newItem.name || !newItem.cal) return;
                           save({[today()]: [...meals, {...newItem, cal:+newItem.cal, p:+newItem.p, c:+newItem.c, f:+newItem.f}]});
                           setNewItem({name:"", cal:"", p:"", c:"", f:""});
                         }}>+</button>
@@ -159,41 +156,58 @@
                   </div>
                 )}
 
+                {tab === "config" && (
+                  <div className="card">
+                    <h3 style={{color:'#e8b86d', marginTop:0}}>Ajustes</h3>
+                    <label style={{fontSize:11, color:'#668'}}>PESO (KG)</label>
+                    <input type="number" value={p.weight} onChange={e=>save({profile:{...p, weight:e.target.value}})} style={{marginBottom:15}}/>
+                    <label style={{fontSize:11, color:'#668'}}>OBJETIVO</label>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8, marginTop:10}}>
+                        {DIET_MODES.map(m => (
+                            <button key={m.id} onClick={()=>save({diet:{...d, mode:m.id}})} style={{ padding: 12, background: d.mode===m.id ? '#e8b86d' : '#1e1e30', border: 'none', borderRadius: 10, color: d.mode===m.id ? '#000' : '#fff', fontWeight:'bold' }}>{m.emoji}</button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
                 {tab === "wife" && (
                   <div>
                     <div className="card" style={{ background: 'linear-gradient(135deg, #1a0b2e, #090915)', border: '1px solid #3a1a5e' }}>
-                      <p style={{ fontSize: 10, color: '#a877f0', fontWeight:'bold' }}>REPORTE PARA LA CENA</p>
-                      <h2 style={{ color: '#e8b86d', margin: '5px 0' }}>{rem.cal} kcal restantes</h2>
-                      
-                      <div style={{ marginTop: 15 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                          <span style={{ fontSize: 13, fontWeight: 'bold', color: '#e8b86d' }}>Equivalencias {rem.p}g Proteína</span>
-                          <span className="crudo-badge">PESO CRUDO</span>
-                        </div>
-                        <table className="food-table">
-                          <tbody>
-                            {portions.map((f, i) => (
-                              <tr key={i}>
-                                <td>{f.name}</td>
-                                <td>
-                                  {f.unit === "piezas" 
-                                    ? `${(rem.p / f.factor).toFixed(1)} piezas` 
-                                    : `${Math.round((rem.p / f.factor) * 100)}g`}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                        <span style={{ fontSize: 13, fontWeight: 'bold', color: '#e8b86d' }}>Equivalencias {rem.p}g P</span>
+                        <span className="crudo-badge">PESO EN CRUDO</span>
                       </div>
+                      <table className="food-table">
+                        <tbody>
+                          {foodRef.map((f, i) => (
+                            <tr key={i}>
+                              <td>{f.name}</td>
+                              <td>{f.u === "pzas" ? `${(rem.p / f.f).toFixed(1)} pzas` : `${Math.round((rem.p / f.f) * 100)}g`}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
 
                     <div className="card">
-                      <p style={{fontSize:12, color:'#888', marginBottom:10}}>¿QUÉ INGREDIENTES HAY?</p>
-                      <textarea placeholder="Ej: Pavo, espinacas, 3 huevos..." value={ingredients} onChange={e=>save({ingredients:e.target.value})} style={{ minHeight: 80 }} />
+                      <p style={{fontSize:12, color:'#888', marginBottom:10}}>¿QUÉ HAY EN EL REFRI?</p>
+                      <textarea placeholder="Ej: Pollo, pavo, espinacas..." value={ingredients} onChange={e=>save({ingredients:e.target.value})} style={{ minHeight: 80 }} />
                     </div>
 
                     <button className="btn-gold" style={{ width: '100%' }} onClick={getAi} disabled={aiLoading}>
-                      {aiLoading ? "✨ Consultando..." : "✨ Pedir Menú a la IA"}
+                      {aiLoading ? "✨ Generando..." : "✨ Generar Menú (Peso Crudo)"}
                     </button>
 
-                    {aiText && <div className="card" style
+                    {aiText && <div className="card" style={{ marginTop: 20, whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6, borderLeft: '4px solid #e8b86d' }}>{aiText}</div>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
