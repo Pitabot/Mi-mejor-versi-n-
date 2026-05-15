@@ -8,10 +8,12 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        body { margin: 0; background: #080810; color: #eee8e0; font-family: -apple-system, system-ui, sans-serif; overflow-x: hidden; }
-        input, select, textarea { background: #080810; border: 1px solid #2a2a40; border-radius: 8px; padding: 8px; color: #eee8e0; font-family: inherit; }
+        body { margin: 0; background: #080810; color: #eee8e0; font-family: -apple-system, system-ui, sans-serif; }
         .card { background: #0f0f1e; border: 1px solid #1e1e35; border-radius: 14px; padding: 14px; margin-bottom: 14px; }
-        .btn-gold { background: linear-gradient(135deg,#e8b86d,#c8784a); color: #080810; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+        input, select, textarea { background: #080810; border: 1px solid #2a2a40; border-radius: 8px; padding: 10px; color: #eee8e0; font-size: 14px; width: 100%; box-sizing: border-box; }
+        button { cursor: pointer; transition: opacity 0.2s; }
+        .btn-gold { background: linear-gradient(135deg,#e8b86d,#c8784a); color: #080810; border: none; border-radius: 10px; font-weight: 700; padding: 12px; }
+        .tab-btn { flex: 1; padding: 15px; background: none; border: none; font-weight: bold; border-bottom: 2px solid transparent; }
     </style>
 </head>
 <body>
@@ -19,191 +21,167 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- DATA & LOGIC ---
         const SK = "macro_tracker_v2";
         const today = () => new Date().toISOString().split("T")[0];
         const load = () => { try { return JSON.parse(localStorage.getItem(SK)) || {}; } catch { return {}; } };
         const persist = d => localStorage.setItem(SK, JSON.stringify(d));
 
         const DIET_MODES = [
-          { id: "deficit",       label: "Déficit",        desc: "Perder grasa",    emoji: "🔥", pct: -20 },
-          { id: "mantenimiento", label: "Mantenimiento",   desc: "Peso estable",    emoji: "⚖️", pct: 0   },
-          { id: "superavit",     label: "Superávit",       desc: "Ganar músculo",   emoji: "💪", pct: +15 },
+            { id: "deficit", label: "Déficit", emoji: "🔥", pct: -20 },
+            { id: "mantenimiento", label: "Mantenimiento", emoji: "⚖️", pct: 0 },
+            { id: "superavit", label: "Superávit", emoji: "💪", pct: 15 }
         ];
 
         const MACRO_PRESETS = {
-          deficit:       { p: 2.4, c: 2.0, f: 0.8 },
-          mantenimiento: { p: 2.0, c: 3.0, f: 1.0 },
-          superavit:     { p: 2.2, c: 4.5, f: 1.2 },
+            deficit: { p: 2.4, c: 2.0, f: 0.8 },
+            mantenimiento: { p: 2.0, c: 3.0, f: 1.0 },
+            superavit: { p: 2.2, c: 4.5, f: 1.2 }
         };
-
-        const FOOD_DB = [
-          { name: "Huevos revueltos (2)", p: 12, c: 2, f: 10, cal: 180 },
-          { name: "Pechuga de pollo 150g", p: 35, c: 0, f: 4, cal: 165 },
-          { name: "Arroz blanco 1 taza", p: 4, c: 45, f: 1, cal: 200 },
-          { name: "Avena con leche", p: 8, c: 40, f: 5, cal: 250 },
-          { name: "Atún lata", p: 25, c: 0, f: 1, cal: 110 }
-        ];
 
         function calcTDEE(w, h, a, s, act) {
-          const bmr = s === "m" ? 10*w + 6.25*h - 5*a + 5 : 10*w + 6.25*h - 5*a - 161;
-          const f = { sedentario: 1.2, ligero: 1.375, moderado: 1.55, activo: 1.725, muyActivo: 1.9 };
-          return Math.round(bmr * (f[act] || 1.55));
+            const bmr = s === "m" ? 10 * w + 6.25 * h - 5 * a + 5 : 10 * w + 6.25 * h - 5 * a - 161;
+            const factors = { sedentario: 1.2, ligero: 1.375, moderado: 1.55, activo: 1.725, muyActivo: 1.9 };
+            return Math.round(bmr * (factors[act] || 1.55));
         }
 
-        // --- UI COMPONENTS ---
         const MiniRing = ({ pct, color, label, value }) => {
-          const r = 31; const c = 2 * Math.PI * r;
-          return (
-            <div style={{ textAlign: 'center' }}>
-              <svg width="80" height="80">
-                <circle cx="40" cy="40" r={r} fill="none" stroke="#1e1e2e" strokeWidth="7" />
-                <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="7" strokeDasharray={c} strokeDashoffset={c - (c * Math.min(pct, 100) / 100)} strokeLinecap="round" transform="rotate(-90 40 40)" />
-                <text x="40" y="45" textAnchor="middle" fill="#fff" fontSize="12" fontWeight="bold">{Math.round(pct)}%</text>
-              </svg>
-              <div style={{ fontSize: 10, color: '#668', marginTop: 4 }}>{label}</div>
-              <div style={{ fontSize: 14, color, fontWeight: 'bold' }}>{Math.round(value)}g</div>
-            </div>
-          );
+            const r = 30; const c = 2 * Math.PI * r;
+            return (
+                <div style={{ textAlign: 'center' }}>
+                    <svg width="70" height="70">
+                        <circle cx="35" cy="35" r={r} fill="none" stroke="#1e1e2e" strokeWidth="6" />
+                        <circle cx="35" cy="35" r={r} fill="none" stroke={color} strokeWidth="6" strokeDasharray={c} strokeDashoffset={c - (c * Math.min(pct, 100) / 100)} strokeLinecap="round" transform="rotate(-90 35 35)" />
+                        <text x="35" y="40" textAnchor="middle" fill="#fff" fontSize="11" fontWeight="bold">{Math.round(pct)}%</text>
+                    </svg>
+                    <div style={{ fontSize: 10, color: '#668', marginTop: 4 }}>{label}</div>
+                    <div style={{ fontSize: 13, color, fontWeight: 'bold' }}>{Math.round(value)}g</div>
+                </div>
+            );
         };
 
-        const MacroBar = ({ label, cur, goal, color }) => (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-              <span style={{ color: '#aaa' }}>{label}</span>
-              <span style={{ color, fontWeight: 'bold' }}>{cur.toFixed(1)}g / {goal}g</span>
-            </div>
-            <div style={{ height: 6, background: '#1e1e2e', borderRadius: 3 }}>
-              <div style={{ height: '100%', width: `${Math.min(100, (cur/goal)*100)}%`, background: color, borderRadius: 3 }} />
-            </div>
-          </div>
-        );
-
-        // --- MAIN APP ---
         function App() {
-          const [tab, setTab] = useState("day");
-          const [store, setStore] = useState(() => load());
-          const [aiText, setAiText] = useState("");
-          const [aiLoading, setAiLoading] = useState(false);
-          const [newItem, setNewItem] = useState({ name: "", cal: "", p: "", c: "", f: "" });
+            const [tab, setTab] = useState("day");
+            const [store, setStore] = useState(() => load());
+            const [aiText, setAiText] = useState("");
+            const [aiLoading, setAiLoading] = useState(false);
+            const [newItem, setNewItem] = useState({ name: "", cal: "", p: "", c: "", f: "" });
 
-          const p = store.profile || { weight: 81.5, height: 180, age: 41, sex: "m", activity: "moderado" };
-          const d = store.diet || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
-          const meals = store[today()] || [];
-          const ing = store.ingredients || "";
+            const p = store.profile || { weight: 81.5, height: 180, age: 41, sex: "m", activity: "moderado" };
+            const d = store.diet || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
+            const meals = store[today()] || [];
+            const ingredients = store.ingredients || "";
 
-          const save = (patch) => { const next = { ...store, ...patch }; setStore(next); persist(next); };
+            const save = (patch) => { const next = { ...store, ...patch }; setStore(next); persist(next); };
 
-          const tdee = calcTDEE(p.weight, p.height, p.age, p.sex, p.activity);
-          const mObj = DIET_MODES.find(x => x.id === d.mode) || DIET_MODES[1];
-          const goalCal = Math.round(tdee * (1 + (d.useCustomPct ? Number(d.customPct) : mObj.pct) / 100));
-          const mBase = d.useCustomMacros ? { p: d.customP, c: d.customC, f: d.customF } : MACRO_PRESETS[d.mode];
-          
-          const gP = Math.round(mBase.p * p.weight);
-          const gC = Math.round(mBase.c * p.weight);
-          const gF = Math.round(mBase.f * p.weight);
+            const tdee = calcTDEE(Number(p.weight), Number(p.height), Number(p.age), p.sex, p.activity);
+            const modeObj = DIET_MODES.find(m => m.id === d.mode);
+            const goalCal = Math.round(tdee * (1 + (d.useCustomPct ? Number(d.customPct) : modeObj.pct) / 100));
+            
+            const mB = d.useCustomMacros ? { p: d.customP, c: d.customC, f: d.customF } : MACRO_PRESETS[d.mode];
+            const gP = Math.round(mB.p * p.weight);
+            const gC = Math.round(mB.c * p.weight);
+            const gF = Math.round(mB.f * p.weight);
 
-          const consumed = meals.reduce((acc, m) => ({
-            cal: acc.cal + Number(m.cal), p: acc.p + Number(m.p), c: acc.c + Number(m.c), f: acc.f + Number(m.f)
-          }), { cal: 0, p: 0, c: 0, f: 0 });
+            const consumed = meals.reduce((acc, m) => ({
+                cal: acc.cal + Number(m.cal), p: acc.p + Number(m.p), c: acc.c + Number(m.c), f: acc.f + Number(m.f)
+            }), { cal: 0, p: 0, c: 0, f: 0 });
 
-          const rem = { cal: goalCal - consumed.cal, p: gP - consumed.p, c: gC - consumed.c, f: gF - consumed.f };
+            const rem = { cal: goalCal - consumed.cal, p: gP - consumed.p, c: gC - consumed.c, f: gF - consumed.f };
 
-          async function getAi() {
-            setAiLoading(true); setAiText("");
-            try {
-              const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyCdUk114BoW7aQMHzOZHGDyHflcbKZ8ir4", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contents: [{ parts: [{ text: `Como nutriólogo, sugiere 3 cenas para alguien con ${rem.cal}kcal, ${rem.p}g P, ${rem.c}g C, ${rem.f}g F restantes. Ingredientes: ${ing}. Sé amable.` }] }] })
-              });
-              const j = await res.json();
-              setAiText(j.candidates[0].content.parts[0].text);
-            } catch { setAiText("Error de red."); }
-            setAiLoading(false);
-          }
+            async function getAi() {
+                setAiLoading(true); setAiText("");
+                try {
+                    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyCdUk114BoW7aQMHzOZHGDyHflcbKZ8ir4", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: `Como nutriólogo, sugiere 3 cenas para alguien con estos macros restantes: ${rem.cal}kcal, ${rem.p}g Proteína, ${rem.c}g Carbos, ${rem.f}g Grasas. Ingredientes en casa: ${ingredients}. Sé amable con mi esposa.` }] }] })
+                    });
+                    const json = await res.json();
+                    setAiText(json.candidates[0].content.parts[0].text);
+                } catch { setAiText("Error de conexión."); }
+                setAiLoading(false);
+            }
 
-          return (
-            <div style={{ maxWidth: 500, margin: "0 auto", padding: "14px 14px 100px" }}>
-              <h2 style={{ fontSize: 20 }}>🥗 Balance & Macros</h2>
+            return (
+                <div style={{ maxWidth: 500, margin: "0 auto", paddingBottom: 100 }}>
+                    <nav style={{ display: 'flex', background: '#0d0d1a', borderBottom: '1px solid #1e1e30' }}>
+                        <button onClick={() => setTab("day")} className="tab-btn" style={{ color: tab === "day" ? "#e8b86d" : "#557", borderBottomColor: tab === "day" ? "#e8b86d" : "transparent" }}>📊 Día</button>
+                        <button onClick={() => setTab("config")} className="tab-btn" style={{ color: tab === "config" ? "#e8b86d" : "#557", borderBottomColor: tab === "config" ? "#e8b86d" : "transparent" }}>⚙️ Perfil</button>
+                        <button onClick={() => setTab("wife")} className="tab-btn" style={{ color: tab === "wife" ? "#e8b86d" : "#557", borderBottomColor: tab === "wife" ? "#e8b86d" : "transparent" }}>💌 Esposa</button>
+                    </nav>
 
-              {tab === "day" && (
-                <div>
-                  <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                        <div style={{ fontSize: 11, color: '#668' }}>CONSUMIDAS</div>
-                        <div style={{ fontSize: 32, fontWeight: 800, color: '#e8b86d' }}>{consumed.cal}</div>
+                    <div style={{ padding: 14 }}>
+                        {tab === "day" && (
+                            <div>
+                                <div className="card" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <div><div style={{ fontSize: 11, color: '#668' }}>CONSUMIDAS</div><div style={{ fontSize: 32, fontWeight: 800, color: '#e8b86d' }}>{consumed.cal}</div></div>
+                                    <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: '#668' }}>META</div><div style={{ fontSize: 20, fontWeight: 700, color: '#7ca8f0' }}>{goalCal}</div><div style={{ fontSize: 10, color: '#557' }}>Faltan {rem.cal} kcal</div></div>
+                                </div>
+                                <div className="card" style={{ display: 'flex', justifyContent: 'space-around' }}>
+                                    <MiniRing pct={(consumed.p/gP)*100} color="#7ca8f0" label="PROT" value={consumed.p} />
+                                    <MiniRing pct={(consumed.c/gC)*100} color="#e8b86d" label="CARB" value={consumed.c} />
+                                    <MiniRing pct={(consumed.f/gF)*100} color="#e87d7d" label="GRAS" value={consumed.f} />
+                                </div>
+                                <div className="card">
+                                    <p style={{ margin: '0 0 10px', fontSize: 12, color: '#888' }}>AGREGAR COMIDA</p>
+                                    <input placeholder="Nombre" value={newItem.name} onChange={e=>setNewItem({...newItem, name:e.target.value})} style={{ marginBottom: 8 }} />
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 50px', gap: 5 }}>
+                                        <input type="number" placeholder="Kcal" value={newItem.cal} onChange={e=>setNewItem({...newItem, cal:e.target.value})} />
+                                        <input type="number" placeholder="P" value={newItem.p} onChange={e=>setNewItem({...newItem, p:e.target.value})} />
+                                        <input type="number" placeholder="C" value={newItem.c} onChange={e=>setNewItem({...newItem, c:e.target.value})} />
+                                        <input type="number" placeholder="G" value={newItem.f} onChange={e=>setNewItem({...newItem, f:e.target.value})} />
+                                        <button className="btn-gold" onClick={()=>{save({[today()]: [...meals, newItem]}); setNewItem({name:"",cal:"",p:"",c:"",f:""})}}>+</button>
+                                    </div>
+                                </div>
+                                {meals.map((m, i) => (
+                                    <div key={i} className="card" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                                        <span>{m.name} ({m.cal} kcal)</span>
+                                        <button onClick={() => save({[today()]: meals.filter((_, idx) => idx !== i)})} style={{ background: 'none', border: 'none', color: '#e87d7d' }}>✕</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {tab === "config" && (
+                            <div>
+                                <div className="card">
+                                    <h3>Perfil Humano</h3>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                                        <label>Peso (kg)<input type="number" value={p.weight} onChange={e=>save({profile:{...p, weight:e.target.value}})}/></label>
+                                        <label>Altura (cm)<input type="number" value={p.height} onChange={e=>save({profile:{...p, height:e.target.value}})}/></label>
+                                        <label>Edad<input type="number" value={p.age} onChange={e=>save({profile:{...p, age:e.target.value}})}/></label>
+                                        <label>Actividad
+                                            <select value={p.activity} onChange={e=>save({profile:{...p, activity:e.target.value}})}>
+                                                <option value="sedentario">Sedentario</option>
+                                                <option value="moderado">Moderado</option>
+                                                <option value="activo">Activo</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="card">
+                                    <h3>Modo de Dieta</h3>
+                                    {DIET_MODES.map(m => (
+                                        <button key={m.id} onClick={()=>save({diet:{...d, mode:m.id}})} style={{ width: '100%', padding: 12, marginBottom: 8, background: d.mode===m.id ? '#e8b86d' : '#1e1e30', border: 'none', borderRadius: 8, color: d.mode===m.id ? '#000' : '#fff' }}>{m.emoji} {m.label}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === "wife" && (
+                            <div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                                    <div className="card"><div style={{ fontSize: 10, color: '#668' }}>RESTANTE</div><div style={{ fontSize: 18, color: '#e8b86d', fontWeight: 'bold' }}>{rem.cal} kcal</div></div>
+                                    <div className="card"><div style={{ fontSize: 10, color: '#668' }}>PROTEÍNA</div><div style={{ fontSize: 18, color: '#7ca8f0', fontWeight: 'bold' }}>{rem.p} g</div></div>
+                                </div>
+                                <textarea placeholder="Ingredientes en casa..." value={ingredients} onChange={e=>save({ingredients:e.target.value})} style={{ minHeight: 120, marginBottom: 14 }} />
+                                <button className="btn-gold" style={{ width: '100%', padding: 16 }} onClick={getAi} disabled={aiLoading}>{aiLoading ? "✨ Generando..." : "✨ Generar Cena con IA"}</button>
+                                {aiText && <div className="card" style={{ marginTop: 15, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{aiText}</div>}
+                            </div>
+                        )}
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 11, color: '#668' }}>META</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: '#7ca8f0' }}>{goalCal}</div>
-                        <div style={{ fontSize: 10, color: '#557' }}>Faltan {rem.cal} kcal</div>
-                    </div>
-                  </div>
-
-                  <div className="card" style={{ display: 'flex', justifyContent: 'space-around' }}>
-                    <MiniRing pct={(consumed.p/gP)*100} color="#7ca8f0" label="PROT" value={consumed.p} />
-                    <MiniRing pct={(consumed.c/gC)*100} color="#e8b86d" label="CARB" value={consumed.c} />
-                    <MiniRing pct={(consumed.f/gF)*100} color="#e87d7d" label="GRAS" value={consumed.f} />
-                  </div>
-
-                  <div className="card">
-                    <p style={{ margin: '0 0 10px', fontSize: 12, color: '#888' }}>AGREGAR ALIMENTO</p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                        <input placeholder="Nombre" style={{ gridColumn: 'span 3' }} value={newItem.name} onChange={e=>setNewItem({...newItem, name:e.target.value})} />
-                        <input type="number" placeholder="Kcal" value={newItem.cal} onChange={e=>setNewItem({...newItem, cal:e.target.value})} />
-                        <input type="number" placeholder="P" value={newItem.p} onChange={e=>setNewItem({...newItem, p:e.target.value})} />
-                        <button className="btn-gold" onClick={()=>{save({[today()]: [...meals, newItem]}); setNewItem({name:"",cal:"",p:"",c:"",f:""})}}>+</button>
-                    </div>
-                  </div>
                 </div>
-              )}
-
-              {tab === "config" && (
-                <div className="card">
-                    <h3>Perfil</h3>
-                    <p>Peso: <input type="number" value={p.weight} onChange={e=>save({profile:{...p, weight:e.target.value}})} /> kg</p>
-                    <div style={{ marginTop: 20 }}>
-                        <p>Modo de Dieta:</p>
-                        {DIET_MODES.map(m => (
-                            <button key={m.id} onClick={()=>save({diet:{...d, mode:m.id}})} style={{ width: '100%', padding: 12, marginBottom: 8, background: d.mode===m.id ? '#e8b86d' : '#1e1e30', border: 'none', borderRadius: 8, color: d.mode===m.id ? '#000' : '#fff' }}>
-                                {m.emoji} {m.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-              )}
-
-              {tab === "wife" && (
-                <div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div className="card">
-                        <div style={{ fontSize: 10, color: '#668' }}>RESTANTE</div>
-                        <div style={{ fontSize: 18, color: '#e8b86d', fontWeight: 'bold' }}>{rem.cal} kcal</div>
-                    </div>
-                    <div className="card">
-                        <div style={{ fontSize: 10, color: '#668' }}>DIETA</div>
-                        <div style={{ fontSize: 18, color: '#7ca8f0', fontWeight: 'bold' }}>{mObj.label}</div>
-                    </div>
-                  </div>
-                  <div className="card">
-                    <p style={{ fontSize: 12, color: '#888' }}>INGREDIENTES EN CASA</p>
-                    <textarea value={ing} onChange={e=>save({ingredients:e.target.value})} style={{ width: '100%', minHeight: 80 }} />
-                  </div>
-                  <button className="btn-gold" style={{ width: '100%', padding: 16 }} onClick={getAi} disabled={aiLoading}>
-                    {aiLoading ? "✨ Generando..." : "✨ Generar Cena con Gemini"}
-                  </button>
-                  {aiText && <div className="card" style={{ marginTop: 15, whiteSpace: 'pre-wrap', fontSize: 14 }}>{aiText}</div>}
-                </div>
-              )}
-
-              <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#0d0d1a', display: 'flex', borderTop: '1px solid #1e1e30' }}>
-                <button onClick={()=>setTab("day")} style={{ flex: 1, padding: 15, background: 'none', border: 'none', color: tab==="day"?"#e8b86d":"#446" }}>📊 Día</button>
-                <button onClick={()=>setTab("config")} style={{ flex: 1, padding: 15, background: 'none', border: 'none', color: tab==="config"?"#e8b86d":"#446" }}>⚙️ Perfil</button>
-                <button onClick={()=>setTab("wife")} style={{ flex: 1, padding: 15, background: 'none', border: 'none', color: tab==="wife"?"#e8b86d":"#446" }}>💌 Esposa</button>
-              </nav>
-            </div>
-          );
+            );
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
