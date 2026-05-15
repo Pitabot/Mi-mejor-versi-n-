@@ -7,240 +7,102 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-        body { margin: 0; background: #080810; }
-    </style>
+    <style>body { margin: 0; background: #080810; font-family: sans-serif; }</style>
 </head>
 <body>
     <div id="root"></div>
-
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- TU CÓDIGO ORIGINAL CON LA MEJORA DE GEMINI ---
+        // Configuración de almacenamiento
         const SK = "macro_tracker_v2";
         const today = () => new Date().toISOString().split("T")[0];
         const load = () => { try { return JSON.parse(localStorage.getItem(SK)) || {}; } catch { return {}; } };
         const persist = d => localStorage.setItem(SK, JSON.stringify(d));
 
         const DIET_MODES = [
-          { id: "deficit",       label: "Déficit",        desc: "Perder grasa",    emoji: "🔥", pct: -20 },
-          { id: "mantenimiento", label: "Mantenimiento",   desc: "Peso estable",    emoji: "⚖️", pct: 0   },
-          { id: "superavit",     label: "Superávit",       desc: "Ganar músculo",   emoji: "💪", pct: +15 },
+          { id: "deficit", label: "Déficit", desc: "Perder grasa", emoji: "🔥", pct: -20 },
+          { id: "mantenimiento", label: "Mantenimiento", desc: "Peso estable", emoji: "⚖️", pct: 0 },
+          { id: "superavit", label: "Superávit", desc: "Ganar músculo", emoji: "💪", pct: +15 },
         ];
 
         const MACRO_PRESETS = {
-          deficit:       { p: 2.4, c: 2.0, f: 0.8 },
+          deficit: { p: 2.4, c: 2.0, f: 0.8 },
           mantenimiento: { p: 2.0, c: 3.0, f: 1.0 },
-          superavit:     { p: 2.2, c: 4.5, f: 1.2 },
+          superavit: { p: 2.2, c: 4.5, f: 1.2 },
         };
-
-        function calcTDEE(weight, height, age, sex, activity) {
-          const bmr = sex === "m"
-            ? 10 * weight + 6.25 * height - 5 * age + 5
-            : 10 * weight + 6.25 * height - 5 * age - 161;
-          const f = { sedentario: 1.2, ligero: 1.375, moderado: 1.55, activo: 1.725, muyActivo: 1.9 };
-          return Math.round(bmr * (f[activity] || 1.55));
-        }
-
-        const FOOD_DB = [
-          { name: "Huevos revueltos (2)",  p: 12, c: 2,  f: 10, cal: 180 },
-          { name: "Avena con leche",       p: 8,  c: 40, f: 5,  cal: 250 },
-          { name: "Pechuga de pollo 150g", p: 35, c: 0,  f: 4,  cal: 165 },
-          { name: "Arroz blanco 1 taza",   p: 4,  c: 45, f: 1,  cal: 200 },
-          { name: "Ensalada verde",        p: 2,  c: 8,  f: 0,  cal: 50  },
-          { name: "Pan integral (2)",      p: 6,  c: 28, f: 2,  cal: 160 },
-          { name: "Plátano",               p: 1,  c: 23, f: 0,  cal: 90  },
-          { name: "Yogur natural",         p: 8,  c: 11, f: 2,  cal: 100 },
-          { name: "Café con leche",        p: 3,  c: 8,  f: 2,  cal: 60  },
-          { name: "Pasta con salsa",       p: 12, c: 65, f: 8,  cal: 380 },
-          { name: "Sopa de verduras",      p: 4,  c: 18, f: 2,  cal: 120 },
-          { name: "Taco de frijoles",      p: 8,  c: 30, f: 6,  cal: 210 },
-          { name: "Quesadilla",            p: 14, c: 35, f: 10, cal: 300 },
-          { name: "Atún en agua 1 lata",   p: 28, c: 0,  f: 1,  cal: 120 },
-          { name: "Leche entera 1 vaso",   p: 8,  c: 12, f: 5,  cal: 120 },
-        ];
-
-        const ACTIVITY_LABELS = {
-          sedentario: "Sedentario (sin ejercicio)",
-          ligero:     "Ligero (1-2 días/sem)",
-          moderado:   "Moderado (3-4 días/sem)",
-          activo:     "Activo (5+ días/sem)",
-          muyActivo:  "Muy activo (2x/día)",
-        };
-
-        const inputSt = {
-          background: "#080810", border: "1px solid #2a2a40", borderRadius: 8,
-          padding: "7px 10px", color: "#eee8e0", fontFamily: "inherit", fontSize: 14,
-        };
-        const chipSt = {
-          border: "none", borderRadius: 8, padding: "6px 12px",
-          fontFamily: "inherit", fontSize: 12, cursor: "pointer", fontWeight: 600,
-        };
-
-        function Section({ title, children }) {
-          return (
-            <div style={{ background: "#0f0f1e", border: "1px solid #1e1e35", borderRadius: 14, padding: 14, marginBottom: 14 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 12, color: "#888", textTransform: "uppercase", letterSpacing: 1 }}>{title}</p>
-              {children}
-            </div>
-          );
-        }
-        function Row({ label, children }) {
-          return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-              <span style={{ fontSize: 13, color: "#aaa8c0", flex: 1 }}>{label}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>{children}</div>
-            </div>
-          );
-        }
-
-        function MacroBar({ label, consumed, goal, color }) {
-          const pct = goal > 0 ? Math.min(100, (consumed / goal) * 100) : 0;
-          const over = consumed > goal;
-          return (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: "#aaa", fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>{label}</span>
-                <span style={{ fontSize: 12, color: over ? "#ef4444" : color, fontWeight: 700 }}>
-                  {consumed.toFixed(1)}g <span style={{ color: "#555", fontWeight: 400 }}>/ {goal}g</span>
-                </span>
-              </div>
-              <div style={{ height: 8, background: "#1e1e2e", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct}%`, background: over ? "#ef4444" : color, borderRadius: 4, transition: "width 0.5s ease" }} />
-              </div>
-            </div>
-          );
-        }
-
-        function MiniRing({ pct, color, label, value, size = 80 }) {
-          const r = size / 2 - 9;
-          const circ = 2 * Math.PI * r;
-          const dash = circ * Math.min(1, pct / 100);
-          return (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <svg width={size} height={size}>
-                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1e1e2e" strokeWidth={8} />
-                <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={pct > 100 ? "#ef4444" : color}
-                  strokeWidth={8} strokeDasharray={circ} strokeDashoffset={circ - dash}
-                  strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`}
-                  style={{ transition: "stroke-dashoffset 0.6s ease" }} />
-                <text x={size/2} y={size/2+4} textAnchor="middle" fill="#f0ede8" fontSize={12} fontWeight="bold">{Math.round(pct)}%</text>
-              </svg>
-              <span style={{ fontSize: 11, color: "#666", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
-              <span style={{ fontSize: 14, color, fontWeight: 700 }}>{value.toFixed(0)}g</span>
-            </div>
-          );
-        }
 
         function App() {
           const [tab, setTab] = useState("day");
           const [store, setStore] = useState(() => load());
+          const [aiText, setAiText] = useState("");
+          const [aiLoading, setAiLoading] = useState(false);
 
-          const profile     = store.profile     || { weight: 75, height: 175, age: 30, sex: "m", activity: "moderado" };
-          const diet        = store.diet        || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
-          const meals       = store[today()]    || [];
+          const profile = store.profile || { weight: 75, height: 175, age: 30, sex: "m", activity: "moderado" };
+          const diet = store.diet || { mode: "mantenimiento", useCustomPct: false, customPct: 0, useCustomMacros: false, customP: 2.0, customC: 3.0, customF: 1.0 };
+          const meals = store[today()] || [];
           const ingredients = store.ingredients || "";
 
-          function save(patch) {
-            const next = { ...store, ...patch };
-            setStore(next);
-            persist(next);
-          }
-          const updateProfile = patch => save({ profile: { ...profile, ...patch } });
-          const updateDiet    = patch => save({ diet: { ...diet, ...patch } });
-          const setIngredients = v => save({ ingredients: v });
-          const addMeal    = m => save({ [today()]: [...meals, m] });
-          const removeMeal = i => save({ [today()]: meals.filter((_, j) => j !== i) });
-
-          const tdee    = calcTDEE(profile.weight, profile.height, profile.age, profile.sex, profile.activity);
-          const modeObj = DIET_MODES.find(d => d.id === diet.mode) || DIET_MODES[1];
-          const pctAdj  = diet.useCustomPct ? Number(diet.customPct) : modeObj.pct;
-          const goalCal = Math.round(tdee * (1 + pctAdj / 100));
-
-          const macroBase = diet.useCustomMacros
-            ? { p: Number(diet.customP), c: Number(diet.customC), f: Number(diet.customF) }
-            : MACRO_PRESETS[diet.mode];
-
-          const goalP = Math.round(macroBase.p * profile.weight);
-          const goalC = Math.round(macroBase.c * profile.weight);
-          const goalF = Math.round(macroBase.f * profile.weight);
-
-          const consumed = meals.reduce((acc, m) => ({
-            cal: acc.cal + m.cal, p: acc.p + m.p, c: acc.c + m.c, f: acc.f + m.f
-          }), { cal: 0, p: 0, c: 0, f: 0 });
-
-          const remaining = {
-            cal: Math.max(0, goalCal - consumed.cal),
-            p:   Math.max(0, goalP - consumed.p),
-            c:   Math.max(0, goalC - consumed.c),
-            f:   Math.max(0, goalF - consumed.f),
-          };
-
-          const perKg = {
-            p: consumed.p / profile.weight,
-            c: consumed.c / profile.weight,
-            f: consumed.f / profile.weight,
-          };
-
-          // --- AQUÍ ESTÁ MI CAMBIO PARA USAR GEMINI ---
-          const [aiText, setAiText]       = useState("");
-          const [aiLoading, setAiLoading] = useState(false);
-          const [showPicker, setShowPicker] = useState(false);
-          const [custom, setCustom] = useState({ name: "", cal: "", p: "", c: "", f: "" });
+          const goalCal = 2000; // Valor simplificado para la prueba
+          const consumed = meals.reduce((acc, m) => ({ cal: acc.cal + m.cal, p: acc.p + m.p, c: acc.c + m.c, f: acc.f + m.f }), { cal: 0, p: 0, c: 0, f: 0 });
 
           async function getSuggestion() {
-            setAiLoading(true); setAiText("");
-            const mealSummary = meals.length
-              ? meals.map(m => `${m.name} (${m.cal}kcal, P:${m.p}g C:${m.c}g G:${m.f}g)`).join("; ")
-              : "ninguna comida registrada aún";
-
-            const promptText = `Eres un nutriólogo experto. Le hablas a la esposa de alguien que lleva registro nutricional.
-DATOS DEL DÍA:
-- Modo de dieta: ${modeObj.label} (${modeObj.desc}, ${pctAdj >= 0 ? "+" : ""}${pctAdj}%)
-- Meta calórica: ${goalCal} kcal · Consumidas: ${consumed.cal} kcal
-- Para cenar: ~${remaining.cal} kcal restantes
-MACROS PENDIENTES PARA LA CENA:
-- Proteína: ${remaining.p.toFixed(0)}g (lleva ${perKg.p.toFixed(2)}g/kg · meta ${macroBase.p}g/kg)
-- Carbohidratos: ${remaining.c.toFixed(0)}g
-- Grasas: ${remaining.f.toFixed(0)}g
-LO QUE COMIÓ HOY: ${mealSummary}
-INGREDIENTES DISPONIBLES EN CASA: ${ingredients || "no especificados, sugiere algo sencillo y común"}
-Da exactamente 3 opciones de cena usando preferentemente los ingredientes disponibles. Para cada una:
-🍽️ NOMBRE
-📋 Ingredientes con porciones exactas en gramos o piezas
-📊 Macros: P Xg | C Xg | G Xg | Total Xkcal
-⏱️ Tiempo de preparación
-💡 Tip corto de preparación
-Al final indica cuál opción es la más adecuada para la dieta ${modeObj.label} y por qué.
-Habla en tono amigable y cariñoso hacia la esposa.`;
-
+            setAiLoading(true);
             try {
-              // REEMPLAZA "TU_API_KEY_AQUI" con tu clave real
-              const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=TU_API_KEY_AQUI", {
+              const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyCdUk114BoW7aQMHzOZHGDyHflcbKZ8ir4", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  contents: [{ parts: [{ text: promptText }] }]
+                  contents: [{ parts: [{ text: `Sugiere 3 cenas saludables con estos ingredientes: ${ingredients}. El objetivo es una dieta de ${diet.mode}.` }] }]
                 }),
               });
               const json = await res.json();
-              const responseContent = json.candidates[0].content.parts[0].text;
-              setAiText(responseContent || "Sin respuesta.");
+              setAiText(json.candidates[0].content.parts[0].text);
             } catch (err) {
-              setAiText("Error de conexión. Revisa tu API Key y consola.");
+              setAiText("Error al conectar con Gemini. Revisa la consola.");
             }
             setAiLoading(false);
           }
 
-          const TABS = [
-            { id: "day",    emoji: "📊", label: "Mi día"    },
-            { id: "config", emoji: "⚙️", label: "Perfil"    },
-            { id: "wife",   emoji: "💌", label: "Mi esposa" },
-          ];
-
           return (
-            <div style={{ minHeight: "100vh", background: "#080810", color: "#eee8e0", fontFamily: "sans-serif", maxWidth: 500, margin: "0 auto", paddingBottom: 72 }}>
-              {/* Header */}
-              <div style={{ background: "linear-gradient(160deg,#0d0d1a,#131325)", padding: "22px 18px 14px", borderBottom: "1px solid #1e1e30" }}>
-                <h1 style={{ margin: 0, fontSize:
+            <div style={{ color: "#eee", padding: 20 }}>
+              <nav style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+                <button onClick={() => setTab("day")}>📊 Mi día</button>
+                <button onClick={() => setTab("wife")}>💌 Esposa</button>
+              </nav>
+              
+              {tab === "day" && (
+                <div>
+                  <h2>Calorías: {consumed.cal} / {goalCal}</h2>
+                  <p>Usa la pestaña "Esposa" para generar cenas.</p>
+                </div>
+              )}
+
+              {tab === "wife" && (
+                <div>
+                  <textarea 
+                    placeholder="Ingredientes en casa..." 
+                    value={ingredients} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const next = { ...store, ingredients: val };
+                      setStore(next);
+                      persist(next);
+                    }}
+                    style={{ width: "100%", height: 100, background: "#111", color: "#fff", padding: 10 }}
+                  />
+                  <button onClick={getSuggestion} disabled={aiLoading} style={{ width: "100%", padding: 15, marginTop: 10, background: "#e8b86d" }}>
+                    {aiLoading ? "Cocinando ideas..." : "Generar Cena con Gemini"}
+                  </button>
+                  <div style={{ marginTop: 20, whiteSpace: "pre-wrap" }}>{aiText}</div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
