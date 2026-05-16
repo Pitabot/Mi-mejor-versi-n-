@@ -296,11 +296,7 @@ function App(){
   const [showPicker,setShowPicker]=useState(false);
   const [custom,setCustom]        =useState({name:"",cal:"",p:"",c:"",f:""});
 
-  async function getSuggestion() {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.startsWith("AIzaSyA2n")) {
-      setAiText("❌ Error: No se ha configurado una API Key válida. Revisa la línea donde pones tu clave.");
-      return;
-    }
+  async function getSuggestion() 
 
     setAiLoading(true);
     setAiText("");
