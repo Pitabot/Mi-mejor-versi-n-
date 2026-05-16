@@ -19,18 +19,59 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState } = React;
+const { useState, useEffect, useRef } = React;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  🔑 PON TU NUEVA API KEY DE GEMINI AQUÍ ABAJO
 const GEMINI_API_KEY = "AIzaSyA2n3EdwO-EG6Ed7C1If0-4CM4KOXub-RY";
+
+//  ☁️  JSONBIN — ya configurado con tu key
+const JSONBIN_SECRET = "$2a$10$ppW0utPb9oiIW1mORBhvmOUl5ku2bouhhVmein6onI/EuvLqqR5jy";
+const JSONBIN_BIN_KEY = "LOCAL_BIN_ID"; // se crea automáticamente al primer uso
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const SK = "macro_tracker_v3";
-const today = () => new Date().toISOString().split("T")[0];
-const load = () => { try { return JSON.parse(localStorage.getItem(SK)) || {}; } catch { return {}; } };
-const persist = d => localStorage.setItem(SK, JSON.stringify(d));
+const SK       = "macro_tracker_v4";
+const BIN_KEY  = "macro_bin_id_v4";
+const today    = () => new Date().toISOString().split("T")[0];
+const loadLocal= () => { try { return JSON.parse(localStorage.getItem(SK)) || {}; } catch { return {}; } };
+const saveLocal= d  => localStorage.setItem(SK, JSON.stringify(d));
 
+// ── JSONBin helpers ───────────────────────────────────────────────────────────
+async function createBin(data) {
+  const res = await fetch("https://api.jsonbin.io/v3/b", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Master-Key": JSONBIN_SECRET,
+      "X-Bin-Name": "balance-macros",
+      "X-Bin-Private": "false",
+    },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  return json.metadata?.id || null;
+}
+
+async function readBin(binId) {
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+    headers: { "X-Master-Key": JSONBIN_SECRET },
+  });
+  const json = await res.json();
+  return json.record || null;
+}
+
+async function writeBin(binId, data) {
+  await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Master-Key": JSONBIN_SECRET,
+    },
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Static data ───────────────────────────────────────────────────────────────
 const DIET_MODES = [
   { id:"deficit",       label:"Déficit",    desc:"Perder grasa",  emoji:"🔥", pct:-20 },
   { id:"mantenimiento", label:"Mantenim.",  desc:"Peso estable",  emoji:"⚖️", pct:0   },
@@ -65,24 +106,18 @@ const ACT = {
   activo:"Activo (5+ días/sem)",
   muyActivo:"Muy activo (2x/día)",
 };
-
-// Proteína por cada 100g de alimento → para calcular cuántos gramos de carne dar
 const PROTEIN_SOURCES = [
-  { emoji:"🍗", name:"Pechuga de pollo",    pPer100g: 31, note:"sin hueso, cruda" },
-  { emoji:"🥩", name:"Filete de res magro", pPer100g: 26, note:"sin grasa visible" },
-  { emoji:"🐟", name:"Filete de tilapia",   pPer100g: 26, note:"crudo" },
-  { emoji:"🐟", name:"Salmón",              pPer100g: 25, note:"crudo" },
-  { emoji:"🐖", name:"Lomo de cerdo",       pPer100g: 22, note:"sin grasa, crudo" },
-  { emoji:"🦐", name:"Camarones",           pPer100g: 24, note:"pelados, crudos" },
-  { emoji:"🥚", name:"Clara de huevo",      pPer100g: 11, note:"líquida (~30g c/u)" },
-  { emoji:"🐟", name:"Atún en agua",        pPer100g: 30, note:"escurrido (lata)" },
-  { emoji:"🫘", name:"Frijoles cocidos",    pPer100g:  9, note:"cocidos" },
-  { emoji:"🧀", name:"Queso cottage",       pPer100g: 11, note:"bajo en grasa" },
+  { emoji:"🍗", name:"Pechuga de pollo",    pPer100g:31, note:"sin hueso, cruda" },
+  { emoji:"🥩", name:"Filete de res magro", pPer100g:26, note:"sin grasa visible" },
+  { emoji:"🐟", name:"Filete de tilapia",   pPer100g:26, note:"crudo" },
+  { emoji:"🐟", name:"Salmón",              pPer100g:25, note:"crudo" },
+  { emoji:"🐖", name:"Lomo de cerdo",       pPer100g:22, note:"sin grasa, crudo" },
+  { emoji:"🦐", name:"Camarones",           pPer100g:24, note:"pelados, crudos" },
+  { emoji:"🥚", name:"Clara de huevo",      pPer100g:11, note:"líquida (~30g c/u)" },
+  { emoji:"🐟", name:"Atún en agua",        pPer100g:30, note:"escurrido (lata)" },
+  { emoji:"🫘", name:"Frijoles cocidos",    pPer100g: 9, note:"cocidos" },
+  { emoji:"🧀", name:"Queso cottage",       pPer100g:11, note:"bajo en grasa" },
 ];
-
-function calcGramsForProtein(targetG, pPer100g) {
-  return Math.round((targetG / pPer100g) * 100);
-}
 
 function calcTDEE(w,h,a,s,act){
   const bmr = s==="m" ? 10*w+6.25*h-5*a+5 : 10*w+6.25*h-5*a-161;
@@ -101,6 +136,7 @@ const chipSt = (active, ac="#e8b86d") => ({
   color: active ? "#080810" : "#aaa",
 });
 
+// ── UI components ─────────────────────────────────────────────────────────────
 function MacroBar({label, consumed, goal, color}){
   const pct = goal>0 ? Math.min(100,(consumed/goal)*100) : 0;
   const over = consumed>goal;
@@ -120,9 +156,7 @@ function MacroBar({label, consumed, goal, color}){
 }
 
 function MiniRing({pct, color, label, value, size=80}){
-  const r = size/2-9;
-  const circ = 2*Math.PI*r;
-  const dash = circ*Math.min(1,pct/100);
+  const r=size/2-9, circ=2*Math.PI*r, dash=circ*Math.min(1,pct/100);
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
       <svg width={size} height={size}>
@@ -139,7 +173,7 @@ function MiniRing({pct, color, label, value, size=80}){
   );
 }
 
-function Section({title, children}){
+function Section({title,children}){
   return (
     <div style={{background:"#0f0f1e",border:"1px solid #1e1e35",borderRadius:14,padding:14,marginBottom:14}}>
       <p style={{margin:"0 0 12px",fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:1}}>{title}</p>
@@ -147,7 +181,7 @@ function Section({title, children}){
     </div>
   );
 }
-function Row({label, children}){
+function Row({label,children}){
   return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:10,flexWrap:"wrap"}}>
       <span style={{fontSize:13,color:"#aaa8c0"}}>{label}</span>
@@ -156,78 +190,135 @@ function Row({label, children}){
   );
 }
 
-function ProteinTable({ targetProtein }) {
-  const [open, setOpen] = useState(false);
+function ProteinTable({targetProtein}){
+  const [open,setOpen]=useState(false);
   return (
     <div style={{background:"#0f0f1e",border:"1px solid #1e1e35",borderRadius:14,padding:14,marginBottom:14}}>
-      <button onClick={()=>setOpen(o=>!o)} style={{
-        width:"100%",background:"none",border:"none",cursor:"pointer",
-        display:"flex",justifyContent:"space-between",alignItems:"center",padding:0
-      }}>
-        <p style={{margin:0,fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:1}}>
-          🥩 ¿Cuánta carne necesita?
-        </p>
+      <button onClick={()=>setOpen(o=>!o)} style={{width:"100%",background:"none",border:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",padding:0}}>
+        <p style={{margin:0,fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:1}}>🥩 ¿Cuánta carne necesita?</p>
         <span style={{color:"#e8b86d",fontSize:13}}>{open?"▲ Cerrar":"▼ Ver tabla"}</span>
       </button>
-
       {open && (
         <div style={{marginTop:12}}>
           <p style={{fontSize:12,color:"#9977bb",marginBottom:10}}>
-            Para cubrir <strong style={{color:"#e8b86d"}}>{targetProtein.toFixed(0)}g de proteína</strong> que le faltan, necesita cocinar aproximadamente:
+            Para cubrir <strong style={{color:"#e8b86d"}}>{targetProtein.toFixed(0)}g de proteína</strong> faltantes:
           </p>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {PROTEIN_SOURCES.map(src => {
-              const grams = calcGramsForProtein(targetProtein, src.pPer100g);
-              return (
-                <div key={src.name} style={{
-                  display:"flex",alignItems:"center",justifyContent:"space-between",
-                  background:"#13131f",borderRadius:10,padding:"10px 12px"
-                }}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:20}}>{src.emoji}</span>
-                    <div>
-                      <p style={{margin:0,fontSize:13,color:"#eee8e0",fontWeight:600}}>{src.name}</p>
-                      <p style={{margin:0,fontSize:10,color:"#555577"}}>{src.note} · {src.pPer100g}g proteína/100g</p>
-                    </div>
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <p style={{margin:0,fontSize:18,fontWeight:700,color:"#7ca8f0"}}>{grams}g</p>
-                    {grams >= 1000
-                      ? <p style={{margin:0,fontSize:10,color:"#555577"}}>{(grams/1000).toFixed(1)} kg</p>
-                      : grams > 200
-                      ? <p style={{margin:0,fontSize:10,color:"#e8b86d"}}>porción grande</p>
-                      : <p style={{margin:0,fontSize:10,color:"#22c55e"}}>porción normal</p>
-                    }
+          {PROTEIN_SOURCES.map(src=>{
+            const g=Math.round((targetProtein/src.pPer100g)*100);
+            return (
+              <div key={src.name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#13131f",borderRadius:10,padding:"10px 12px",marginBottom:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:20}}>{src.emoji}</span>
+                  <div>
+                    <p style={{margin:0,fontSize:13,color:"#eee8e0",fontWeight:600}}>{src.name}</p>
+                    <p style={{margin:0,fontSize:10,color:"#555577"}}>{src.note} · {src.pPer100g}g prot/100g</p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-          <p style={{margin:"10px 0 0",fontSize:11,color:"#444466",fontStyle:"italic"}}>
-            * Estos pesos son en crudo. Al cocinar la carne pierde ~25% de peso, así que el plato servido pesará menos.
-          </p>
+                <div style={{textAlign:"right"}}>
+                  <p style={{margin:0,fontSize:18,fontWeight:700,color:"#7ca8f0"}}>{g}g</p>
+                  <p style={{margin:0,fontSize:10,color:g>300?"#e8b86d":"#22c55e"}}>{g>300?"porción grande":"porción normal"}</p>
+                </div>
+              </div>
+            );
+          })}
+          <p style={{margin:"8px 0 0",fontSize:11,color:"#444466",fontStyle:"italic"}}>* Pesos en crudo. Al cocinar la carne pierde ~25% de peso.</p>
         </div>
       )}
     </div>
   );
 }
 
+// ── Sync status badge ─────────────────────────────────────────────────────────
+function SyncBadge({status}){
+  const cfg = {
+    syncing: { color:"#e8b86d", text:"⟳ Sincronizando..." },
+    synced:  { color:"#22c55e", text:"☁️ Sincronizado"    },
+    error:   { color:"#ef4444", text:"✕ Error de sync"    },
+    offline: { color:"#555577", text:"○ Sin conexión"     },
+  }[status] || { color:"#555577", text:"" };
+  return (
+    <span style={{fontSize:10,color:cfg.color,fontWeight:600,letterSpacing:0.5}}>{cfg.text}</span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MAIN APP
+// ─────────────────────────────────────────────────────────────────────────────
 function App(){
-  const [tab, setTab] = useState("day");
-  const [store, setStore] = useState(()=>load());
+  const [tab,setTab]         = useState("day");
+  const [store,setStore]     = useState(()=>loadLocal());
+  const [syncStatus,setSyncStatus] = useState("synced");
+  const [lastSync,setLastSync]     = useState(null);
+  const binIdRef  = useRef(localStorage.getItem(BIN_KEY) || null);
+  const syncTimer = useRef(null);
+
+  // ── Cloud sync ──────────────────────────────────────────────────────────────
+  async function pushToCloud(data) {
+    setSyncStatus("syncing");
+    try {
+      let binId = binIdRef.current;
+      if (!binId) {
+        binId = await createBin(data);
+        if (!binId) throw new Error("no bin id");
+        binIdRef.current = binId;
+        localStorage.setItem(BIN_KEY, binId);
+      } else {
+        await writeBin(binId, data);
+      }
+      setSyncStatus("synced");
+      setLastSync(new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"}));
+    } catch {
+      setSyncStatus("error");
+    }
+  }
+
+  async function pullFromCloud() {
+    const binId = binIdRef.current;
+    if (!binId) return;
+    setSyncStatus("syncing");
+    try {
+      const remote = await readBin(binId);
+      if (remote) {
+        setStore(remote);
+        saveLocal(remote);
+        setSyncStatus("synced");
+        setLastSync(new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"}));
+      }
+    } catch {
+      setSyncStatus("error");
+    }
+  }
+
+  // auto-pull every 30 seconds when on wife tab
+  useEffect(()=>{
+    if (tab==="wife") {
+      pullFromCloud();
+      const iv = setInterval(pullFromCloud, 30000);
+      return ()=>clearInterval(iv);
+    }
+  },[tab]);
+
+  // debounced push on store changes
+  function save(patch){
+    const next={...store,...patch};
+    setStore(next);
+    saveLocal(next);
+    clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(()=>pushToCloud(next), 1200);
+  }
 
   const profile     = store.profile     || {weight:75,height:175,age:30,sex:"m",activity:"moderado"};
   const diet        = store.diet        || {mode:"mantenimiento",useCustomPct:false,customPct:0,useCustomMacros:false,customP:2.0,customC:3.0,customF:1.0};
   const meals       = store[today()]    || [];
   const ingredients = store.ingredients || "";
 
-  function save(patch){ const next={...store,...patch}; setStore(next); persist(next); }
   const upProfile = p => save({profile:{...profile,...p}});
   const upDiet    = p => save({diet:{...diet,...p}});
   const setIng    = v => save({ingredients:v});
   const addMeal   = m => save({[today()]:[...meals,m]});
   const delMeal   = i => save({[today()]:meals.filter((_,j)=>j!==i)});
 
+  // ── Calculations ────────────────────────────────────────────────────────────
   const tdee    = calcTDEE(profile.weight,profile.height,profile.age,profile.sex,profile.activity);
   const modeObj = DIET_MODES.find(d=>d.id===diet.mode)||DIET_MODES[1];
   const pctAdj  = diet.useCustomPct ? Number(diet.customPct) : modeObj.pct;
@@ -235,14 +326,12 @@ function App(){
   const mb      = diet.useCustomMacros
     ? {p:Number(diet.customP),c:Number(diet.customC),f:Number(diet.customF)}
     : MACRO_PRESETS[diet.mode];
-  const goalP = Math.round(mb.p*profile.weight);
-  const goalC = Math.round(mb.c*profile.weight);
-  const goalF = Math.round(mb.f*profile.weight);
-
+  const goalP=Math.round(mb.p*profile.weight), goalC=Math.round(mb.c*profile.weight), goalF=Math.round(mb.f*profile.weight);
   const cons = meals.reduce((a,m)=>({cal:a.cal+m.cal,p:a.p+m.p,c:a.c+m.c,f:a.f+m.f}),{cal:0,p:0,c:0,f:0});
   const rem  = {cal:Math.max(0,goalCal-cons.cal),p:Math.max(0,goalP-cons.p),c:Math.max(0,goalC-cons.c),f:Math.max(0,goalF-cons.f)};
-  const pkg  = {p:cons.p/profile.weight, c:cons.c/profile.weight, f:cons.f/profile.weight};
+  const pkg  = {p:cons.p/profile.weight,c:cons.c/profile.weight,f:cons.f/profile.weight};
 
+  // ── AI ──────────────────────────────────────────────────────────────────────
   const [aiText,setAiText]         = useState("");
   const [aiLoading,setAiLoading]   = useState(false);
   const [showPicker,setShowPicker] = useState(false);
@@ -251,33 +340,26 @@ function App(){
   async function getSuggestion(){
     setAiLoading(true); setAiText("");
     const ms = meals.length ? meals.map(m=>`${m.name}(${m.cal}kcal P${m.p}g C${m.c}g G${m.f}g)`).join("; ") : "ninguna";
-    const prompt = `Eres nutriólogo experto. Le hablas a la esposa de alguien con registro nutricional.
+    const prompt=`Eres nutriólogo experto. Le hablas a la esposa de alguien con registro nutricional.
 DIETA: ${modeObj.label} (${pctAdj>=0?"+":""}${pctAdj}%) · Meta: ${goalCal}kcal · Consumidas: ${cons.cal}kcal
 MACROS PARA CENAR: Proteína ${rem.p.toFixed(0)}g (lleva ${pkg.p.toFixed(2)}g/kg, meta ${mb.p}g/kg) · Carbos ${rem.c.toFixed(0)}g · Grasas ${rem.f.toFixed(0)}g
 COMIÓ HOY: ${ms}
 INGREDIENTES EN CASA: ${ingredients||"no especificados, sugiere algo sencillo"}
 Da exactamente 3 opciones de cena usando preferentemente los ingredientes disponibles. Para cada una:
 🍽️ NOMBRE
-📋 Ingredientes con porciones exactas en gramos o piezas (indica peso en crudo de las carnes)
+📋 Ingredientes con porciones exactas (indica peso en crudo de las carnes)
 📊 P Xg | C Xg | G Xg | Total Xkcal
 ⏱️ Tiempo de preparación
-💡 Tip corto de preparación
+💡 Tip corto
 Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué. Tono amigable hacia la esposa.`;
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({ contents:[{ parts:[{ text:prompt }] }] })
-        }
-      );
-      const json = await res.json();
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-      setAiText(text || "Sin respuesta de Gemini.");
-    } catch {
-      setAiText("Error de conexión. Verifica tu API key e intenta de nuevo.");
-    }
+    try{
+      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+      });
+      const json=await res.json();
+      setAiText(json.candidates?.[0]?.content?.parts?.[0]?.text||"Sin respuesta de Gemini.");
+    }catch{ setAiText("Error de conexión. Verifica tu API key."); }
     setAiLoading(false);
   }
 
@@ -286,21 +368,27 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
   return (
     <div style={{minHeight:"100vh",background:"#080810",color:"#eee8e0",maxWidth:500,margin:"0 auto",paddingBottom:72}}>
 
-      <div style={{background:"linear-gradient(160deg,#0d0d1a,#131325)",padding:"22px 18px 14px",borderBottom:"1px solid #1e1e30"}}>
-        <h1 style={{margin:0,fontSize:20,fontWeight:700,letterSpacing:0.5}}>🥗 Balance & Macros</h1>
+      {/* Header */}
+      <div style={{background:"linear-gradient(160deg,#0d0d1a,#131325)",padding:"18px 18px 12px",borderBottom:"1px solid #1e1e30"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <h1 style={{margin:0,fontSize:20,fontWeight:700,letterSpacing:0.5}}>🥗 Balance & Macros</h1>
+          <div style={{textAlign:"right"}}>
+            <SyncBadge status={syncStatus}/>
+            {lastSync && <p style={{margin:"2px 0 0",fontSize:9,color:"#444466"}}>última sync {lastSync}</p>}
+          </div>
+        </div>
         <p style={{margin:"3px 0 0",fontSize:11,color:"#555577"}}>
           {new Date().toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
         </p>
       </div>
 
+      {/* Top nav */}
       <div style={{display:"flex",background:"#0d0d1a",borderBottom:"1px solid #1e1e30"}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{
             flex:1,padding:"11px 4px",border:"none",background:"transparent",
-            color:tab===t.id?"#e8b86d":"#555577",fontSize:12,
-            fontWeight:tab===t.id?700:400,
-            borderBottom:tab===t.id?"2px solid #e8b86d":"2px solid transparent",
-            cursor:"pointer"
+            color:tab===t.id?"#e8b86d":"#555577",fontSize:12,fontWeight:tab===t.id?700:400,
+            borderBottom:tab===t.id?"2px solid #e8b86d":"2px solid transparent",cursor:"pointer"
           }}>{t.e} {t.l}</button>
         ))}
       </div>
@@ -308,6 +396,7 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
       {/* ═══ MI DÍA ═══ */}
       {tab==="day" && (
         <div style={{padding:"16px 14px"}}>
+
           <div style={{background:"#0f0f1e",border:"1px solid #1e1e35",borderRadius:16,padding:"18px 18px 14px",marginBottom:14}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
               <div>
@@ -374,10 +463,10 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
             )}
             <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
               <input placeholder="Nombre del alimento" value={custom.name} onChange={e=>setCustom(p=>({...p,name:e.target.value}))} style={{...iSt,flex:"2 1 130px",width:"auto"}}/>
-              <input type="number" placeholder="kcal" value={custom.cal} onChange={e=>setCustom(p=>({...p,cal:e.target.value}))} style={{...iSt,flex:"1 1 60px",width:"auto"}}/>
-              <input type="number" placeholder="P(g)" value={custom.p} onChange={e=>setCustom(p=>({...p,p:e.target.value}))} style={{...iSt,flex:"1 1 50px",width:"auto"}}/>
-              <input type="number" placeholder="C(g)" value={custom.c} onChange={e=>setCustom(p=>({...p,c:e.target.value}))} style={{...iSt,flex:"1 1 50px",width:"auto"}}/>
-              <input type="number" placeholder="G(g)" value={custom.f} onChange={e=>setCustom(p=>({...p,f:e.target.value}))} style={{...iSt,flex:"1 1 50px",width:"auto"}}/>
+              <input type="number" placeholder="kcal"  value={custom.cal} onChange={e=>setCustom(p=>({...p,cal:e.target.value}))} style={{...iSt,flex:"1 1 60px",width:"auto"}}/>
+              <input type="number" placeholder="P(g)"  value={custom.p}   onChange={e=>setCustom(p=>({...p,p:e.target.value}))}   style={{...iSt,flex:"1 1 50px",width:"auto"}}/>
+              <input type="number" placeholder="C(g)"  value={custom.c}   onChange={e=>setCustom(p=>({...p,c:e.target.value}))}   style={{...iSt,flex:"1 1 50px",width:"auto"}}/>
+              <input type="number" placeholder="G(g)"  value={custom.f}   onChange={e=>setCustom(p=>({...p,f:e.target.value}))}   style={{...iSt,flex:"1 1 50px",width:"auto"}}/>
               <button onClick={()=>{
                 if(!custom.name||!custom.cal)return;
                 addMeal({name:custom.name,cal:+custom.cal,p:+(custom.p||0),c:+(custom.c||0),f:+(custom.f||0),time:new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"})});
@@ -409,15 +498,9 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
       {tab==="config" && (
         <div style={{padding:"16px 14px"}}>
           <Section title="🧍 Datos personales">
-            <Row label="Peso (kg)">
-              <input type="number" value={profile.weight} onChange={e=>upProfile({weight:+e.target.value})} style={{...iSt,width:80,textAlign:"center"}}/>
-            </Row>
-            <Row label="Altura (cm)">
-              <input type="number" value={profile.height} onChange={e=>upProfile({height:+e.target.value})} style={{...iSt,width:80,textAlign:"center"}}/>
-            </Row>
-            <Row label="Edad">
-              <input type="number" value={profile.age} onChange={e=>upProfile({age:+e.target.value})} style={{...iSt,width:80,textAlign:"center"}}/>
-            </Row>
+            <Row label="Peso (kg)"><input type="number" value={profile.weight} onChange={e=>upProfile({weight:+e.target.value})} style={{...iSt,width:80,textAlign:"center"}}/></Row>
+            <Row label="Altura (cm)"><input type="number" value={profile.height} onChange={e=>upProfile({height:+e.target.value})} style={{...iSt,width:80,textAlign:"center"}}/></Row>
+            <Row label="Edad"><input type="number" value={profile.age} onChange={e=>upProfile({age:+e.target.value})} style={{...iSt,width:80,textAlign:"center"}}/></Row>
             <Row label="Sexo">
               <button onClick={()=>upProfile({sex:"m"})} style={chipSt(profile.sex==="m")}>Hombre</button>
               <button onClick={()=>upProfile({sex:"f"})} style={chipSt(profile.sex==="f")}>Mujer</button>
@@ -436,12 +519,7 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
           <Section title="🎯 Modo de dieta">
             <div style={{display:"flex",gap:8,marginBottom:12}}>
               {DIET_MODES.map(d=>(
-                <button key={d.id} onClick={()=>upDiet({mode:d.id})} style={{
-                  flex:1,padding:"10px 4px",borderRadius:10,
-                  border:`1px solid ${diet.mode===d.id?"#e8b86d":"#1e1e30"}`,
-                  background:diet.mode===d.id?"#1e1a0e":"#0f0f1e",
-                  cursor:"pointer"
-                }}>
+                <button key={d.id} onClick={()=>upDiet({mode:d.id})} style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1px solid ${diet.mode===d.id?"#e8b86d":"#1e1e30"}`,background:diet.mode===d.id?"#1e1a0e":"#0f0f1e",cursor:"pointer"}}>
                   <p style={{margin:0,fontSize:18}}>{d.emoji}</p>
                   <p style={{margin:"2px 0 0",fontSize:11,color:diet.mode===d.id?"#e8b86d":"#888",fontWeight:600}}>{d.label}</p>
                   <p style={{margin:0,fontSize:10,color:"#555577"}}>{d.pct>0?"+":""}{d.pct}%</p>
@@ -449,15 +527,11 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
               ))}
             </div>
             <Row label="% personalizado">
-              <button onClick={()=>upDiet({useCustomPct:!diet.useCustomPct})} style={chipSt(diet.useCustomPct)}>
-                {diet.useCustomPct?"Activo ✓":"Activar"}
-              </button>
+              <button onClick={()=>upDiet({useCustomPct:!diet.useCustomPct})} style={chipSt(diet.useCustomPct)}>{diet.useCustomPct?"Activo ✓":"Activar"}</button>
             </Row>
             {diet.useCustomPct && (
               <Row label={`Ajuste: ${diet.customPct>=0?"+":""}${diet.customPct}%`}>
-                <input type="range" min={-40} max={40} step={5} value={diet.customPct}
-                  onChange={e=>upDiet({customPct:+e.target.value})}
-                  style={{flex:1,accentColor:"#e8b86d"}}/>
+                <input type="range" min={-40} max={40} step={5} value={diet.customPct} onChange={e=>upDiet({customPct:+e.target.value})} style={{flex:1,accentColor:"#e8b86d"}}/>
               </Row>
             )}
             <div style={{background:"#13131f",borderRadius:8,padding:"10px 12px",marginTop:8,display:"flex",justifyContent:"space-between"}}>
@@ -468,18 +542,14 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
 
           <Section title="💪 Metas de macros (g/kg peso)">
             <Row label="Macros personalizados">
-              <button onClick={()=>upDiet({useCustomMacros:!diet.useCustomMacros})} style={chipSt(diet.useCustomMacros,"#7ca8f0")}>
-                {diet.useCustomMacros?"Personalizado ✓":"Usar preset"}
-              </button>
+              <button onClick={()=>upDiet({useCustomMacros:!diet.useCustomMacros})} style={chipSt(diet.useCustomMacros,"#7ca8f0")}>{diet.useCustomMacros?"Personalizado ✓":"Usar preset"}</button>
             </Row>
             {[{k:"P",l:"Proteína",c:"#7ca8f0",mk:"p"},{k:"C",l:"Carbohidratos",c:"#e8b86d",mk:"c"},{k:"F",l:"Grasa",c:"#e87d7d",mk:"f"}].map(({k,l,c,mk})=>{
-              const val = diet.useCustomMacros ? diet[`custom${k}`] : mb[mk];
+              const val=diet.useCustomMacros?diet[`custom${k}`]:mb[mk];
               return (
                 <Row key={k} label={`${l} g/kg`}>
                   {diet.useCustomMacros
-                    ? <input type="number" step="0.1" value={diet[`custom${k}`]}
-                        onChange={e=>upDiet({[`custom${k}`]:e.target.value})}
-                        style={{...iSt,width:70,textAlign:"center"}}/>
+                    ? <input type="number" step="0.1" value={diet[`custom${k}`]} onChange={e=>upDiet({[`custom${k}`]:e.target.value})} style={{...iSt,width:70,textAlign:"center"}}/>
                     : <span style={{color:c,fontWeight:700}}>{val} g/kg</span>
                   }
                   <span style={{fontSize:11,color:"#555577"}}>→ {Math.round(val*profile.weight)}g</span>
@@ -493,6 +563,15 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
       {/* ═══ MI ESPOSA ═══ */}
       {tab==="wife" && (
         <div style={{padding:"16px 14px"}}>
+
+          {/* Sync bar */}
+          <div style={{background:"#0f0f1e",border:"1px solid #1e1e35",borderRadius:12,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:12,color:"#666688"}}>Datos en tiempo real</span>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <SyncBadge status={syncStatus}/>
+              <button onClick={pullFromCloud} style={{background:"#1e1e30",border:"none",color:"#e8b86d",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>↻ Actualizar</button>
+            </div>
+          </div>
 
           {/* Resumen */}
           <div style={{background:"linear-gradient(135deg,#150d20,#0d1520)",border:"1px solid #2a1a3a",borderRadius:16,padding:18,marginBottom:14}}>
@@ -521,19 +600,16 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
             </div>
           </div>
 
-          {/* Tabla de equivalencias de proteína */}
-          <ProteinTable targetProtein={rem.p} />
+          <ProteinTable targetProtein={rem.p}/>
 
-          {/* Ingredientes */}
           <div style={{background:"#0f0f1e",border:"1px solid #1e1e35",borderRadius:14,padding:14,marginBottom:14}}>
             <p style={{margin:"0 0 8px",fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:1}}>🛒 Ingredientes disponibles en casa</p>
             <textarea value={ingredients} onChange={e=>setIng(e.target.value)}
               placeholder="Ej: pollo, arroz, brócoli, huevos, tortillas, queso, frijoles, aguacate..."
               style={{...iSt,minHeight:80,resize:"vertical",padding:"10px 12px"}}/>
-            <p style={{margin:"6px 0 0",fontSize:11,color:"#444466"}}>Gemini usará estos ingredientes para armar las opciones de cena.</p>
+            <p style={{margin:"6px 0 0",fontSize:11,color:"#444466"}}>Gemini usará estos ingredientes para las opciones de cena.</p>
           </div>
 
-          {/* Botón IA */}
           <button onClick={getSuggestion} disabled={aiLoading} style={{
             width:"100%",padding:16,border:"none",borderRadius:14,
             background:aiLoading?"#1e1e30":"linear-gradient(135deg,#e8b86d,#c8784a)",
@@ -551,7 +627,7 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
           {!aiText && !aiLoading && (
             <div style={{textAlign:"center",padding:"28px 0",color:"#333355"}}>
               <p style={{fontSize:36,marginBottom:8}}>👨‍🍳</p>
-              <p style={{fontSize:13,fontStyle:"italic"}}>Escribe los ingredientes disponibles y presiona el botón para recibir 3 opciones de cena con porciones exactas y macros calculados.</p>
+              <p style={{fontSize:13,fontStyle:"italic"}}>Escribe los ingredientes y presiona el botón para recibir 3 opciones de cena con porciones exactas.</p>
             </div>
           )}
         </div>
@@ -559,10 +635,7 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
 
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:500,background:"#0d0d1a",borderTop:"1px solid #1e1e30",display:"flex"}}>
         {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{
-            flex:1,padding:"12px 4px 10px",border:"none",background:"transparent",
-            color:tab===t.id?"#e8b86d":"#444466",fontSize:11,cursor:"pointer"
-          }}>{t.e}<br/>{t.l}</button>
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"12px 4px 10px",border:"none",background:"transparent",color:tab===t.id?"#e8b86d":"#444466",fontSize:11,cursor:"pointer"}}>{t.e}<br/>{t.l}</button>
         ))}
       </div>
     </div>
