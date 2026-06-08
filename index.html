@@ -101,6 +101,18 @@ const PROTEIN_SOURCES = [
   {emoji:"🫘",name:"Frijoles cocidos",   pPer100g:9, note:"cocidos"},
   {emoji:"🧀",name:"Queso cottage",      pPer100g:11,note:"bajo en grasa"},
 ];
+const CARB_SOURCES = [
+  {emoji:"🍚",name:"Arroz blanco cocido",  cPer100g:28, note:"cocido"},
+  {emoji:"🍠",name:"Camote cocido",         cPer100g:20, note:"sin cáscara, cocido"},
+  {emoji:"🌽",name:"Tortilla de maíz",      cPer100g:46, note:"1 tortilla = ~30g"},
+  {emoji:"🍌",name:"Plátano maduro",         cPer100g:23, note:"sin cáscara"},
+  {emoji:"🫘",name:"Frijoles cocidos",       cPer100g:14, note:"cocidos, sin caldo"},
+  {emoji:"🍞",name:"Pan integral",           cPer100g:41, note:"1 rebanada = ~35g"},
+  {emoji:"🌾",name:"Avena seca",             cPer100g:66, note:"cruda"},
+  {emoji:"🍝",name:"Pasta cocida",           cPer100g:25, note:"cocida al dente"},
+  {emoji:"🥔",name:"Papa cocida",            cPer100g:17, note:"sin cáscara, cocida"},
+  {emoji:"🍇",name:"Uvas",                   cPer100g:17, note:"frescas"},
+];
 
 function calcTDEE(w,h,a,s,act){
   const bmr=s==="m"?10*w+6.25*h-5*a+5:10*w+6.25*h-5*a-161;
@@ -159,36 +171,37 @@ function SyncBadge({status}){
   const cfg={syncing:{color:"#e8b86d",text:"⟳ Sincronizando..."},synced:{color:"#22c55e",text:"☁️ Sincronizado"},error:{color:"#ef4444",text:"✕ Error de sync"},offline:{color:"#555577",text:"○ Sin conexión"}}[status]||{color:"#555577",text:""};
   return <span style={{fontSize:10,color:cfg.color,fontWeight:600,letterSpacing:0.5}}>{cfg.text}</span>;
 }
-function ProteinTable({targetProtein}){
+function NutrientTable({title, emoji, targetG, sources, valueKey, unit, color, note}){
   const [open,setOpen]=useState(false);
+  if(targetG<=0) return null;
   return(
     <div style={{background:"#0f0f1e",border:"1px solid #1e1e35",borderRadius:14,padding:14,marginBottom:14}}>
       <button onClick={()=>setOpen(o=>!o)} style={{width:"100%",background:"none",border:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",padding:0}}>
-        <p style={{margin:0,fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:1}}>🥩 ¿Cuánta carne necesita?</p>
+        <p style={{margin:0,fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:1}}>{emoji} {title}</p>
         <span style={{color:"#e8b86d",fontSize:13}}>{open?"▲ Cerrar":"▼ Ver tabla"}</span>
       </button>
       {open&&(
         <div style={{marginTop:12}}>
-          <p style={{fontSize:12,color:"#9977bb",marginBottom:10}}>Para cubrir <strong style={{color:"#e8b86d"}}>{targetProtein.toFixed(0)}g de proteína</strong> faltantes:</p>
-          {PROTEIN_SOURCES.map(src=>{
-            const g=Math.round((targetProtein/src.pPer100g)*100);
+          <p style={{fontSize:12,color:"#9977bb",marginBottom:10}}>Para cubrir <strong style={{color}}>{targetG.toFixed(0)}g de {unit}</strong> faltantes:</p>
+          {sources.map(src=>{
+            const g=Math.round((targetG/src[valueKey])*100);
             return(
               <div key={src.name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#13131f",borderRadius:10,padding:"10px 12px",marginBottom:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <span style={{fontSize:20}}>{src.emoji}</span>
                   <div>
                     <p style={{margin:0,fontSize:13,color:"#eee8e0",fontWeight:600}}>{src.name}</p>
-                    <p style={{margin:0,fontSize:10,color:"#555577"}}>{src.note} · {src.pPer100g}g prot/100g</p>
+                    <p style={{margin:0,fontSize:10,color:"#555577"}}>{src.note} · {src[valueKey]}g {unit}/100g</p>
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <p style={{margin:0,fontSize:18,fontWeight:700,color:"#7ca8f0"}}>{g}g</p>
-                  <p style={{margin:0,fontSize:10,color:g>300?"#e8b86d":"#22c55e"}}>{g>300?"porción grande":"porción normal"}</p>
+                  <p style={{margin:0,fontSize:18,fontWeight:700,color}}>{g}g</p>
+                  <p style={{margin:0,fontSize:10,color:g>300?"#e87d7d":"#22c55e"}}>{g>300?"porción grande":"porción normal"}</p>
                 </div>
               </div>
             );
           })}
-          <p style={{margin:"8px 0 0",fontSize:11,color:"#444466",fontStyle:"italic"}}>* Pesos en crudo. Al cocinar pierde ~25%.</p>
+          <p style={{margin:"8px 0 0",fontSize:11,color:"#444466",fontStyle:"italic"}}>* Pesos aproximados. Pueden variar según la marca o cocción.</p>
         </div>
       )}
     </div>
@@ -571,7 +584,24 @@ Al final indica cuál es la mejor opción para dieta ${modeObj.label} y por qué
             </div>
           </div>
 
-          <ProteinTable targetProtein={rem.p}/>
+          <NutrientTable
+            title="¿Cuánta carne necesita?"
+            emoji="🥩"
+            targetG={rem.p}
+            sources={PROTEIN_SOURCES}
+            valueKey="pPer100g"
+            unit="proteína"
+            color="#7ca8f0"
+          />
+          <NutrientTable
+            title="¿Cuántos carbohidratos necesita?"
+            emoji="🌾"
+            targetG={rem.c}
+            sources={CARB_SOURCES}
+            valueKey="cPer100g"
+            unit="carbos"
+            color="#e8b86d"
+          />
 
           <div style={{background:"#0f0f1e",border:"1px solid #1e1e35",borderRadius:14,padding:14,marginBottom:14}}>
             <p style={{margin:"0 0 8px",fontSize:12,color:"#888",textTransform:"uppercase",letterSpacing:1}}>🛒 Ingredientes disponibles en casa</p>
